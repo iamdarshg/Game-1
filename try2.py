@@ -11,6 +11,7 @@ FPS = 60
 GAME_SAVE_FILE = "game_console_save.pkl"
 
 # --- Colors ---
+MAGENTA = (255, 0, 255)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GRAY = (100, 100, 100)
@@ -22,6 +23,9 @@ YELLOW = (255, 255, 0)
 ORANGE = (255, 165, 0)
 PURPLE = (128, 0, 128)
 BROWN = (139, 69, 19)
+CYAN = (0, 255, 255)
+
+
 
 # --- Base Game Class ---
 class BaseGame:
@@ -829,6 +833,310 @@ class MazeGame(BaseGame):
             self.reset()
 
 
+# --- Tetris Game ---
+class TetrisGame(BaseGame):
+    def __init__(self, console):
+        super().__init__(console)
+        self.grid_width = 10
+        self.grid_height = 20
+        self.block_size = 25
+        self.grid_offset_x = (SCREEN_WIDTH - self.grid_width * self.block_size) // 2
+        self.grid_offset_y = (SCREEN_HEIGHT - self.grid_height * self.block_size) // 2 - 50 # Adjust for score/next piece display
+
+        self.grid = [[BLACK for _ in range(self.grid_width)] for _ in range(self.grid_height)]
+        self.score = 0
+        self.level = 1
+        self.lines_cleared = 0
+        self.game_over = False
+
+        self.tetrominoes = {
+            'I': {'shape': [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], 'color': CYAN},
+            'J': {'shape': [[1,0,0], [1,1,1], [0,0,0]], 'color': BLUE},
+            'L': {'shape': [[0,0,1], [1,1,1], [0,0,0]], 'color': ORANGE},
+            'O': {'shape': [[1,1], [1,1]], 'color': YELLOW},
+            'S': {'shape': [[0,1,1], [1,1,0], [0,0,0]], 'color': GREEN},
+            'T': {'shape': [[0,1,0], [1,1,1], [0,0,0]], 'color': PURPLE},
+            'Z': {'shape': [[1,1,0], [0,1,1], [0,0,0]], 'color': RED}
+        }
+        self.current_piece = None
+        self.next_piece = None
+        self.piece_x = 0
+        self.piece_y = 0
+
+        self.fall_time = 0
+        self.fall_speed = 0.5 # Seconds per grid row
+
+        self.reset()
+
+    def reset(self):
+        """Resets the Tetris game state."""
+        self.grid = [[BLACK for _ in range(self.grid_width)] for _ in range(self.grid_height)]
+        self.score = 0
+        self.level = 1
+        self.lines_cleared = 0
+        self.game_over = False
+        self.fall_time = 0
+        self.fall_speed = 0.5
+        self.current_piece = self._get_new_piece()
+        self.next_piece = self._get_new_piece()
+        self._set_initial_piece_position()
+
+    def _get_new_piece(self):
+        """Returns a random new tetromino."""
+        shape_name = random.choice(list(self.tetrominoes.keys()))
+        return {'shape_name': shape_name,
+                'shape': self.tetrominoes[shape_name]['shape'],
+                'color': self.tetrominoes[shape_name]['color']}
+
+    def _set_initial_piece_position(self):
+        """Sets the initial position of the current piece."""
+        self.piece_x = self.grid_width // 2 - len(self.current_piece['shape'][0]) // 2
+        self.piece_y = 0
+        if not self._check_collision(self.current_piece['shape'], self.piece_x, self.piece_y):
+            self.game_over = True # Game over if new piece can't be placed
+
+    def _check_collision(self, shape, x_offset, y_offset):
+        """Checks if the given shape collides with the grid boundaries or existing blocks."""
+        for r_idx, row in enumerate(shape):
+            for c_idx, cell in enumerate(row):
+                if cell == 1:
+                    grid_x = x_offset + c_idx
+                    grid_y = y_offset + r_idx
+                    if not (0 <= grid_x < self.grid_width and 0 <= grid_y < self.grid_height):
+                        return False # Out of bounds
+                    if self.grid[grid_y][grid_x] != BLACK:
+                        return False # Collision with existing block
+        return True
+
+    def _merge_piece_to_grid(self):
+        """Merges the current piece into the main grid."""
+        for r_idx, row in enumerate(self.current_piece['shape']):
+            for c_idx, cell in enumerate(row):
+                if cell == 1:
+                    self.grid[self.piece_y + r_idx][self.piece_x + c_idx] = self.current_piece['color']
+
+    def _clear_lines(self):
+        """Checks for and clears full lines, then shifts blocks down."""
+        new_grid = [row for row in self.grid if any(cell == BLACK for cell in row)]
+        cleared_rows = self.grid_height - len(new_grid)
+        for _ in range(cleared_rows):
+            new_grid.insert(0, [BLACK for _ in range(self.grid_width)])
+        self.grid = new_grid
+        self.lines_cleared += cleared_rows
+        self.score += cleared_rows * 100 * self.level # Basic scoring
+        self.level = 1 + (self.lines_cleared // 10) # Increase level every 10 lines
+        self.fall_speed = max(0.1, 0.5 - (self.level - 1) * 0.05) # Speed up
+
+    def _rotate_piece(self, shape):
+        """Rotates a 2D list (matrix) clockwise."""
+        num_rows = len(shape)
+        num_cols = len(shape[0])
+        rotated_shape = [[0 for _ in range(num_rows)] for _ in range(num_cols)]
+        for r in range(num_rows):
+            for c in range(num_cols):
+                rotated_shape[c][num_rows - 1 - r] = shape[r][c]
+        return rotated_shape
+
+    def handle_event(self, event):
+        if self.game_over:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                self.reset()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.console.set_active_game("menu")
+            return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.console.set_active_game("menu")
+            elif event.key == pygame.K_LEFT:
+                if self._check_collision(self.current_piece['shape'], self.piece_x - 1, self.piece_y):
+                    self.piece_x -= 1
+            elif event.key == pygame.K_RIGHT:
+                if self._check_collision(self.current_piece['shape'], self.piece_x + 1, self.piece_y):
+                    self.piece_x += 1
+            elif event.key == pygame.K_DOWN:
+                # Soft drop
+                if self._check_collision(self.current_piece['shape'], self.piece_x, self.piece_y + 1):
+                    self.piece_y += 1
+                    self.score += 1 # Small score for soft drop
+            elif event.key == pygame.K_SPACE:
+                # Hard drop
+                while self._check_collision(self.current_piece['shape'], self.piece_x, self.piece_y + 1):
+                    self.piece_y += 1
+                    self.score += 2 # More score for hard drop
+                self._merge_piece_to_grid()
+                self._clear_lines()
+                self.current_piece = self.next_piece
+                self.next_piece = self._get_new_piece()
+                self._set_initial_piece_position()
+                self.fall_time = 0 # Reset fall time after hard drop
+            elif event.key == pygame.K_UP:
+                # Rotate
+                rotated_shape = self._rotate_piece(self.current_piece['shape'])
+                if self._check_collision(rotated_shape, self.piece_x, self.piece_y):
+                    self.current_piece['shape'] = rotated_shape
+
+    def update(self, dt):
+        if self.game_over:
+            return
+
+        self.fall_time += dt
+        if self.fall_time >= self.fall_speed:
+            if self._check_collision(self.current_piece['shape'], self.piece_x, self.piece_y + 1):
+                self.piece_y += 1
+            else:
+                # Piece landed
+                self._merge_piece_to_grid()
+                self._clear_lines()
+                self.current_piece = self.next_piece
+                self.next_piece = self._get_new_piece()
+                self._set_initial_piece_position() # This also checks for game over
+            self.fall_time = 0
+
+    def draw(self, screen):
+        screen.fill(BLACK)
+
+        # Draw grid background
+        for r in range(self.grid_height):
+            for c in range(self.grid_width):
+                pygame.draw.rect(screen, GRAY, (self.grid_offset_x + c * self.block_size,
+                                                 self.grid_offset_y + r * self.block_size,
+                                                 self.block_size, self.block_size), 1) # Border
+
+        # Draw filled blocks on the grid
+        for r in range(self.grid_height):
+            for c in range(self.grid_width):
+                color = self.grid[r][c]
+                if color != BLACK:
+                    pygame.draw.rect(screen, color, (self.grid_offset_x + c * self.block_size,
+                                                      self.grid_offset_y + r * self.block_size,
+                                                      self.block_size, self.block_size))
+                    pygame.draw.rect(screen, WHITE, (self.grid_offset_x + c * self.block_size,
+                                                      self.grid_offset_y + r * self.block_size,
+                                                      self.block_size, self.block_size), 1) # Border
+
+        # Draw current falling piece
+        if self.current_piece:
+            for r_idx, row in enumerate(self.current_piece['shape']):
+                for c_idx, cell in enumerate(row):
+                    if cell == 1:
+                        pygame.draw.rect(screen, self.current_piece['color'],
+                                         (self.grid_offset_x + (self.piece_x + c_idx) * self.block_size,
+                                          self.grid_offset_y + (self.piece_y + r_idx) * self.block_size,
+                                          self.block_size, self.block_size))
+                        pygame.draw.rect(screen, WHITE,
+                                         (self.grid_offset_x + (self.piece_x + c_idx) * self.block_size,
+                                          self.grid_offset_y + (self.piece_y + r_idx) * self.block_size,
+                                          self.block_size, self.block_size), 1) # Border
+
+        # Draw next piece preview
+        font = pygame.font.Font(None, 30)
+        next_text = font.render("NEXT:", True, WHITE)
+        screen.blit(next_text, (self.grid_offset_x + self.grid_width * self.block_size + 20, self.grid_offset_y + 50))
+        if self.next_piece:
+            for r_idx, row in enumerate(self.next_piece['shape']):
+                for c_idx, cell in enumerate(row):
+                    if cell == 1:
+                        pygame.draw.rect(screen, self.next_piece['color'],
+                                         (self.grid_offset_x + self.grid_width * self.block_size + 20 + c_idx * self.block_size,
+                                          self.grid_offset_y + 80 + r_idx * self.block_size,
+                                          self.block_size, self.block_size))
+                        pygame.draw.rect(screen, WHITE,
+                                         (self.grid_offset_x + self.grid_width * self.block_size + 20 + c_idx * self.block_size,
+                                          self.grid_offset_y + 80 + r_idx * self.block_size,
+                                          self.block_size, self.block_size), 1) # Border
+
+        # Draw score and level
+        score_text = font.render(f"Score: {self.score}", True, WHITE)
+        level_text = font.render(f"Level: {self.level}", True, WHITE)
+        screen.blit(score_text, (self.grid_offset_x + self.grid_width * self.block_size + 20, self.grid_offset_y + 200))
+        screen.blit(level_text, (self.grid_offset_x + self.grid_width * self.block_size + 20, self.grid_offset_y + 230))
+        lines_text = font.render(f"Lines: {self.lines_cleared}", True, WHITE)
+        screen.blit(lines_text, (self.grid_offset_x + self.grid_width * self.block_size + 20, self.grid_offset_y + 260))
+
+
+        if self.game_over:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150)) # Semi-transparent black
+            screen.blit(overlay, (0, 0))
+
+            game_over_font = pygame.font.Font(None, 80)
+            game_over_text = game_over_font.render("GAME OVER", True, RED)
+            final_score_text = font.render(f"Final Score: {self.score}", True, WHITE)
+            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+
+            screen.blit(game_over_text, game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(final_score_text, final_score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10)))
+            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80)))
+
+
+    def get_state(self):
+        # Convert piece shapes to tuples for pickling
+        current_piece_serializable = None
+        if self.current_piece:
+            current_piece_serializable = {
+                'shape_name': self.current_piece['shape_name'],
+                'shape': tuple(tuple(row) for row in self.current_piece['shape']),
+                'color': self.current_piece['color']
+            }
+        next_piece_serializable = None
+        if self.next_piece:
+            next_piece_serializable = {
+                'shape_name': self.next_piece['shape_name'],
+                'shape': tuple(tuple(row) for row in self.next_piece['shape']),
+                'color': self.next_piece['color']
+            }
+
+        return {
+            "grid": tuple(tuple(row) for row in self.grid), # Convert grid to tuple of tuples
+            "score": self.score,
+            "level": self.level,
+            "lines_cleared": self.lines_cleared,
+            "game_over": self.game_over,
+            "current_piece": current_piece_serializable,
+            "next_piece": next_piece_serializable,
+            "piece_x": self.piece_x,
+            "piece_y": self.piece_y,
+            "fall_time": self.fall_time,
+            "fall_speed": self.fall_speed
+        }
+
+    def set_state(self, state):
+        self.grid = [list(row) for row in state.get("grid", [[BLACK for _ in range(self.grid_width)] for _ in range(self.grid_height)])]
+        self.score = state.get("score", 0)
+        self.level = state.get("level", 1)
+        self.lines_cleared = state.get("lines_cleared", 0)
+        self.game_over = state.get("game_over", False)
+        self.piece_x = state.get("piece_x", 0)
+        self.piece_y = state.get("piece_y", 0)
+        self.fall_time = state.get("fall_time", 0)
+        self.fall_speed = state.get("fall_speed", 0.5)
+
+        current_piece_data = state.get("current_piece")
+        if current_piece_data:
+            self.current_piece = {
+                'shape_name': current_piece_data['shape_name'],
+                'shape': [list(row) for row in current_piece_data['shape']],
+                'color': tuple(current_piece_data['color'])
+            }
+        else:
+            self.current_piece = self._get_new_piece()
+
+        next_piece_data = state.get("next_piece")
+        if next_piece_data:
+            self.next_piece = {
+                'shape_name': next_piece_data['shape_name'],
+                'shape': [list(row) for row in next_piece_data['shape']],
+                'color': tuple(next_piece_data['color'])
+            }
+        else:
+            self.next_piece = self._get_new_piece()
+
+        # If loaded state is empty or corrupted, reset fully
+        if not self.grid or not self.current_piece:
+            self.reset()
+
+
 # --- Save/Load Manager ---
 class SaveLoadManager:
     """Handles saving and loading of game states using pickle."""
@@ -885,7 +1193,8 @@ class GameConsole:
             "pong": PongGame(self),
             "minesweeper": MinesweeperGame(self),
             "jump_king": JumpKingGame(self),
-            "maze": MazeGame(self) # New Maze Game instance
+            "maze": MazeGame(self), # New Maze Game instance
+            "tetris": TetrisGame(self) # New Tetris Game instance
         }
         self.active_game_key = "menu" # Start at the main menu
         self.save_load_manager = SaveLoadManager(GAME_SAVE_FILE)
@@ -898,6 +1207,7 @@ class GameConsole:
             ("Play Jump King", "jump_king"),
             ("Play Maze Game", "maze_size_selection"), # Now leads to size selection
             ("Set Maze Size", "maze_size_settings"), # For changing size without starting
+            ("Play Tetris", "tetris"), # New Tetris game option
             ("Load Game", "load"),
             ("Help", "help"),
             ("Exit", "exit")
@@ -934,6 +1244,7 @@ class GameConsole:
             "Minesweeper": "Controls: Left Click to reveal, Right Click to flag. ESC to menu, R to restart. Difficulty affects board size & mines.",
             "Jump King": "Controls: LEFT/RIGHT arrow keys to move. Hold SPACE to charge jump, release to jump. ESC to menu, R to restart.",
             "Maze Game": "Controls: ARROW keys to move. Find the red circle. ESC to menu, R to restart. Size affects maze dimensions.",
+            "Tetris": "Controls: LEFT/RIGHT arrow keys to move. UP arrow to rotate. DOWN arrow for soft drop. SPACE for hard drop. ESC to menu, R to restart.",
             "Console": "Press 'S' in any game to save its state. Load from Main Menu. Use 'Set Difficulty/Size' options to change settings without starting a new game."
         }
         self.help_menu_lines = []
@@ -1073,6 +1384,8 @@ class GameConsole:
         elif selected_action == "maze_size_settings":
             self.active_game_key = "maze_size_settings"
             self.selected_maze_size_index = 0
+        elif selected_action == "tetris":
+            self.set_active_game("tetris")
         elif selected_action == "load":
             self._load_saved_game()
         elif selected_action == "help":
