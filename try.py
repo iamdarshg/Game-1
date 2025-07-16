@@ -5,13 +5,14 @@ import os
 import random
 
 # --- Constants ---
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
+# These represent the internal rendering resolution, not the actual window size.
+# All game logic and drawing will be done relative to these dimensions.
+BASE_SCREEN_WIDTH = 800
+BASE_SCREEN_HEIGHT = 600
 FPS = 60
 GAME_SAVE_FILE = "game_console_save.pkl"
 
 # --- Colors ---
-MAGENTA = (255, 0, 255)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GRAY = (100, 100, 100)
@@ -24,8 +25,7 @@ ORANGE = (255, 165, 0)
 PURPLE = (128, 0, 128)
 BROWN = (139, 69, 19)
 CYAN = (0, 255, 255)
-
-
+MAGENTA = (255, 0, 255)
 
 # --- Base Game Class ---
 class BaseGame:
@@ -105,10 +105,10 @@ class PongGame(BaseGame):
 
     def reset(self):
         """Resets Pong game state."""
-        self.player_paddle_y = (SCREEN_HEIGHT - self.paddle_height) // 2
-        self.ai_paddle_y = (SCREEN_HEIGHT - self.paddle_height) // 2
-        self.ball_x = SCREEN_WIDTH // 2 - self.ball_size // 2
-        self.ball_y = SCREEN_HEIGHT // 2 - self.ball_size // 2
+        self.player_paddle_y = (BASE_SCREEN_HEIGHT - self.paddle_height) // 2
+        self.ai_paddle_y = (BASE_SCREEN_HEIGHT - self.paddle_height) // 2
+        self.ball_x = BASE_SCREEN_WIDTH // 2 - self.ball_size // 2
+        self.ball_y = BASE_SCREEN_HEIGHT // 2 - self.ball_size // 2
         self.ball_speed_x = self.ball_speed_x_base * self.ball_speed_multiplier * random.choice([-1, 1])
         self.ball_speed_y = self.ball_speed_y_base * self.ball_speed_multiplier * random.choice([-1, 1])
         self.player_score = 0
@@ -132,19 +132,19 @@ class PongGame(BaseGame):
             self.player_paddle_y -= self.player_paddle_speed
         if keys[pygame.K_DOWN]:
             self.player_paddle_y += self.player_paddle_speed
-        self.player_paddle_y = max(0, min(self.player_paddle_y, SCREEN_HEIGHT - self.paddle_height))
+        self.player_paddle_y = max(0, min(self.player_paddle_y, BASE_SCREEN_HEIGHT - self.paddle_height))
 
         # Ball movement
         self.ball_x += self.ball_speed_x
         self.ball_y += self.ball_speed_y
 
         # Ball collision with top/bottom walls
-        if self.ball_y <= 0 or self.ball_y >= SCREEN_HEIGHT - self.ball_size:
+        if self.ball_y <= 0 or self.ball_y >= BASE_SCREEN_HEIGHT - self.ball_size:
             self.ball_speed_y *= -1
 
         # Ball collision with paddles
         player_paddle_rect = pygame.Rect(50, self.player_paddle_y, self.paddle_width, self.paddle_height)
-        ai_paddle_rect = pygame.Rect(SCREEN_WIDTH - 50 - self.paddle_width, self.ai_paddle_y, self.paddle_width, self.paddle_height)
+        ai_paddle_rect = pygame.Rect(BASE_SCREEN_WIDTH - 50 - self.paddle_width, self.ai_paddle_y, self.paddle_width, self.paddle_height)
         ball_rect = pygame.Rect(self.ball_x, self.ball_y, self.ball_size, self.ball_size)
 
         if ball_rect.colliderect(player_paddle_rect) or ball_rect.colliderect(ai_paddle_rect):
@@ -157,7 +157,7 @@ class PongGame(BaseGame):
         if self.ball_x < 0:
             self.ai_score += 1
             self._reset_ball()
-        elif self.ball_x > SCREEN_WIDTH:
+        elif self.ball_x > BASE_SCREEN_WIDTH:
             self.player_score += 1
             self._reset_ball()
 
@@ -166,7 +166,7 @@ class PongGame(BaseGame):
             self.ai_paddle_y += self.ai_paddle_speed
         elif self.ai_paddle_y + self.paddle_height / 2 > self.ball_y:
             self.ai_paddle_y -= self.ai_paddle_speed
-        self.ai_paddle_y = max(0, min(self.ai_paddle_y, SCREEN_HEIGHT - self.paddle_height))
+        self.ai_paddle_y = max(0, min(self.ai_paddle_y, BASE_SCREEN_HEIGHT - self.paddle_height))
 
         # Check for game over
         if self.player_score >= self.max_score or self.ai_score >= self.max_score:
@@ -174,8 +174,8 @@ class PongGame(BaseGame):
 
     def _reset_ball(self):
         """Resets ball position and direction after a score."""
-        self.ball_x = SCREEN_WIDTH // 2 - self.ball_size // 2
-        self.ball_y = SCREEN_HEIGHT // 2 - self.ball_size // 2
+        self.ball_x = BASE_SCREEN_WIDTH // 2 - self.ball_size // 2
+        self.ball_y = BASE_SCREEN_HEIGHT // 2 - self.ball_size // 2
         self.ball_speed_x = self.ball_speed_x_base * self.ball_speed_multiplier * random.choice([-1, 1])
         self.ball_speed_y = self.ball_speed_y_base * self.ball_speed_multiplier * random.choice([-1, 1])
 
@@ -183,23 +183,23 @@ class PongGame(BaseGame):
     def draw(self, screen):
         screen.fill(BLACK)
         pygame.draw.rect(screen, WHITE, (50, self.player_paddle_y, self.paddle_width, self.paddle_height))
-        pygame.draw.rect(screen, WHITE, (SCREEN_WIDTH - 50 - self.paddle_width, self.ai_paddle_y, self.paddle_width, self.paddle_height))
+        pygame.draw.rect(screen, WHITE, (BASE_SCREEN_WIDTH - 50 - self.paddle_width, self.ai_paddle_y, self.paddle_width, self.paddle_height))
         pygame.draw.ellipse(screen, WHITE, (self.ball_x, self.ball_y, self.ball_size, self.ball_size))
-        pygame.draw.aaline(screen, WHITE, (SCREEN_WIDTH // 2, 0), (SCREEN_WIDTH // 2, SCREEN_HEIGHT))
+        pygame.draw.aaline(screen, WHITE, (BASE_SCREEN_WIDTH // 2, 0), (BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT))
 
-        font = pygame.font.Font(None, 74)
+        font = pygame.font.Font(None, self.console._get_scaled_font_size(74))
         player_text = font.render(str(self.player_score), True, WHITE)
         ai_text = font.render(str(self.ai_score), True, WHITE)
-        screen.blit(player_text, (SCREEN_WIDTH // 4, 20))
-        screen.blit(ai_text, (SCREEN_WIDTH * 3 // 4 - ai_text.get_width(), 20))
+        screen.blit(player_text, (BASE_SCREEN_WIDTH // 4, 20))
+        screen.blit(ai_text, (BASE_SCREEN_WIDTH * 3 // 4 - ai_text.get_width(), 20))
 
         if self.game_over:
-            game_over_font = pygame.font.Font(None, 100)
+            game_over_font = pygame.font.Font(None, self.console._get_scaled_font_size(100))
             winner = "Player" if self.player_score >= self.max_score else "AI"
             game_over_text = game_over_font.render(f"{winner} Wins!", True, YELLOW)
-            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
-            screen.blit(game_over_text, (SCREEN_WIDTH // 2 - game_over_text.get_width() // 2, SCREEN_HEIGHT // 2 - 50))
-            screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, SCREEN_HEIGHT // 2 + 50))
+            restart_text = pygame.font.Font(None, self.console._get_scaled_font_size(40)).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+            screen.blit(game_over_text, (BASE_SCREEN_WIDTH // 2 - game_over_text.get_width() // 2, BASE_SCREEN_HEIGHT // 2 - 50))
+            screen.blit(restart_text, (BASE_SCREEN_WIDTH // 2 - restart_text.get_width() // 2, BASE_SCREEN_HEIGHT // 2 + 50))
 
     def get_state(self):
         return {
@@ -216,10 +216,10 @@ class PongGame(BaseGame):
         }
 
     def set_state(self, state):
-        self.player_paddle_y = state.get("player_paddle_y", (SCREEN_HEIGHT - self.paddle_height) // 2)
-        self.ai_paddle_y = state.get("ai_paddle_y", (SCREEN_HEIGHT - self.paddle_height) // 2)
-        self.ball_x = state.get("ball_x", SCREEN_WIDTH // 2 - self.ball_size // 2)
-        self.ball_y = state.get("ball_y", SCREEN_HEIGHT // 2 - self.ball_size // 2)
+        self.player_paddle_y = state.get("player_paddle_y", (BASE_SCREEN_HEIGHT - self.paddle_height) // 2)
+        self.ai_paddle_y = state.get("ai_paddle_y", (BASE_SCREEN_HEIGHT - self.paddle_height) // 2)
+        self.ball_x = state.get("ball_x", BASE_SCREEN_WIDTH // 2 - self.ball_size // 2)
+        self.ball_y = state.get("ball_y", BASE_SCREEN_HEIGHT // 2 - self.ball_size // 2)
         self.player_score = state.get("player_score", 0)
         self.ai_score = state.get("ai_score", 0)
         self.game_over = state.get("game_over", False)
@@ -236,8 +236,8 @@ class MinesweeperGame(BaseGame):
         self.cell_size = 40
         self.difficulty = "normal" # Default difficulty
         self._set_difficulty_params()
-        self.board_offset_x = (SCREEN_WIDTH - self.cols * self.cell_size) // 2
-        self.board_offset_y = (SCREEN_HEIGHT - self.rows * self.cell_size) // 2
+        self.board_offset_x = (BASE_SCREEN_WIDTH - self.cols * self.cell_size) // 2
+        self.board_offset_y = (BASE_SCREEN_HEIGHT - self.rows * self.cell_size) // 2
         self.board = []  # Stores (is_mine, num_adjacent_mines, is_revealed, is_flagged)
         self.game_over = False
         self.win = False
@@ -258,8 +258,8 @@ class MinesweeperGame(BaseGame):
             self.cols = 10
             self.num_mines = 15
         # Recalculate offsets based on new dimensions
-        self.board_offset_x = (SCREEN_WIDTH - self.cols * self.cell_size) // 2
-        self.board_offset_y = (SCREEN_HEIGHT - self.rows * self.cell_size) // 2
+        self.board_offset_x = (BASE_SCREEN_WIDTH - self.cols * self.cell_size) // 2
+        self.board_offset_y = (BASE_SCREEN_HEIGHT - self.rows * self.cell_size) // 2
 
     def set_difficulty(self, difficulty_level):
         """Sets the game difficulty and updates parameters."""
@@ -305,10 +305,12 @@ class MinesweeperGame(BaseGame):
             elif event.key == pygame.K_r and (self.game_over or self.win):
                 self.reset()
         elif event.type == pygame.MOUSEBUTTONDOWN and not self.game_over and not self.win:
-            mx, my = event.pos
+            # Scale mouse position from actual screen to base screen coordinates
+            scaled_mx, scaled_my = self.console._scale_mouse_pos(event.pos)
+            
             # Convert mouse coords to board coords
-            c = (mx - self.board_offset_x) // self.cell_size
-            r = (my - self.board_offset_y) // self.cell_size
+            c = (scaled_mx - self.board_offset_x) // self.cell_size
+            r = (scaled_my - self.board_offset_y) // self.cell_size
 
             if 0 <= r < self.rows and 0 <= c < self.cols:
                 is_mine, adj_mines, is_revealed, is_flagged = self.board[r][c]
@@ -366,7 +368,7 @@ class MinesweeperGame(BaseGame):
 
     def draw(self, screen):
         screen.fill(GRAY)
-        font = pygame.font.Font(None, 30)
+        font = pygame.font.Font(None, self.console._get_scaled_font_size(30))
 
         for r in range(self.rows):
             for c in range(self.cols):
@@ -402,18 +404,18 @@ class MinesweeperGame(BaseGame):
 
 
         if self.game_over:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150)) # Semi-transparent black
             screen.blit(overlay, (0, 0))
 
-            game_over_font = pygame.font.Font(None, 80)
+            game_over_font = pygame.font.Font(None, self.console._get_scaled_font_size(80))
             message = "You Win!" if self.win else "Game Over!"
             message_color = GREEN if self.win else RED
             message_text = game_over_font.render(message, True, message_color)
-            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+            restart_text = pygame.font.Font(None, self.console._get_scaled_font_size(40)).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
 
-            screen.blit(message_text, message_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
-            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)))
+            screen.blit(message_text, message_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(restart_text, restart_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 + 50)))
 
     def get_state(self):
         return {
@@ -439,8 +441,8 @@ class JumpKingGame(BaseGame):
     def __init__(self, console):
         super().__init__(console)
         self.player_size = 30
-        self.player_x = SCREEN_WIDTH // 2 - self.player_size // 2
-        self.player_y = SCREEN_HEIGHT - 100 - self.player_size # Start above bottom
+        self.player_x = BASE_SCREEN_WIDTH // 2 - self.player_size // 2
+        self.player_y = BASE_SCREEN_HEIGHT - 100 - self.player_size # Start above bottom
         self.player_vel_y = 0
         self.gravity = 0.5
         self.jump_power = -12
@@ -451,33 +453,37 @@ class JumpKingGame(BaseGame):
         self.game_over = False
         self.win = False
 
+        self.coyote_time_duration = 8 # Frames player can still jump after leaving ground
+        self.coyote_time_counter = 0
+
         self.platforms = []
         self.goal_platform = None
         self.reset()
 
     def reset(self):
         """Resets Jump King game state and generates a new level."""
-        self.player_x = SCREEN_WIDTH // 2 - self.player_size // 2
-        self.player_y = SCREEN_HEIGHT - 100 - self.player_size
+        self.player_x = BASE_SCREEN_WIDTH // 2 - self.player_size // 2
+        self.player_y = BASE_SCREEN_HEIGHT - 100 - self.player_size
         self.player_vel_y = 0
         self.on_ground = False
         self.charging_jump = False
         self.jump_charge_time = 0
         self.game_over = False
         self.win = False
+        self.coyote_time_counter = 0 # Reset coyote time on game reset
         self._generate_platforms()
 
     def _generate_platforms(self):
         self.platforms = []
         # Starting platform
-        self.platforms.append(pygame.Rect(SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT - 100, 100, 20))
+        self.platforms.append(pygame.Rect(BASE_SCREEN_WIDTH // 2 - 50, BASE_SCREEN_HEIGHT - 100, 100, 20))
 
         # Generate a few random platforms
-        current_y = SCREEN_HEIGHT - 200
+        current_y = BASE_SCREEN_HEIGHT - 200
         for _ in range(5): # 5 platforms
             width = random.randint(60, 150)
             height = 20
-            x = random.randint(50, SCREEN_WIDTH - width - 50)
+            x = random.randint(50, BASE_SCREEN_WIDTH - width - 50)
             y = current_y - random.randint(80, 150) # Platforms are above each other
             self.platforms.append(pygame.Rect(x, y, width, height))
             current_y = y
@@ -485,7 +491,7 @@ class JumpKingGame(BaseGame):
         # Goal platform at the top
         goal_width = 80
         goal_height = 20
-        goal_x = random.randint(50, SCREEN_WIDTH - goal_width - 50)
+        goal_x = random.randint(50, BASE_SCREEN_WIDTH - goal_width - 50)
         goal_y = 50 # Near the top
         self.goal_platform = pygame.Rect(goal_x, goal_y, goal_width, goal_height)
         self.platforms.append(self.goal_platform)
@@ -497,16 +503,20 @@ class JumpKingGame(BaseGame):
                 self.console.set_active_game("menu")
             elif event.key == pygame.K_r and (self.game_over or self.win):
                 self.reset()
-            elif event.key == pygame.K_SPACE and self.on_ground and not self.game_over and not self.win:
+            # Modified jump condition to include coyote time
+            elif event.key == pygame.K_SPACE and \
+                 (self.on_ground or self.coyote_time_counter > 0) and \
+                 not self.charging_jump and not self.game_over and not self.win:
                 self.charging_jump = True
                 self.jump_charge_time = 0
+                self.coyote_time_counter = 0 # Consume coyote time when jump is initiated
         elif event.type == pygame.KEYUP:
             if event.key == pygame.K_SPACE and self.charging_jump and not self.game_over and not self.win:
                 self.charging_jump = False
                 # Apply jump power based on charge time
                 jump_strength = self.jump_power * (self.jump_charge_time / self.max_jump_charge)
                 self.player_vel_y = max(self.jump_power, jump_strength) # Cap at full jump power
-                self.on_ground = False # Player is now in air
+                self.on_ground = False # Player is now in air (important for subsequent fall/coyote time)
 
     def update(self, dt):
         if self.game_over or self.win:
@@ -528,30 +538,40 @@ class JumpKingGame(BaseGame):
             self.player_x += 3
 
         # Keep player within horizontal bounds
-        self.player_x = max(0, min(self.player_x, SCREEN_WIDTH - self.player_size))
+        self.player_x = max(0, min(self.player_x, BASE_SCREEN_WIDTH - self.player_size))
 
         player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
-        self.on_ground = False
-
-        # Platform collision
+        
+        # Check for actual ground collision
+        was_on_ground_this_frame = False
         for platform in self.platforms:
-            if player_rect.colliderect(platform):
-                # If falling and hit top of platform
-                if self.player_vel_y > 0 and player_rect.bottom <= platform.top + abs(self.player_vel_y):
-                    self.player_y = platform.top - self.player_size
-                    self.player_vel_y = 0
-                    self.on_ground = True
-                    # Check for win condition
-                    if platform == self.goal_platform:
-                        self.win = True
-                        self.game_over = True
-                # If hitting bottom of platform (jumping into it)
-                elif self.player_vel_y < 0 and player_rect.top >= platform.bottom - abs(self.player_vel_y):
-                    self.player_y = platform.bottom
-                    self.player_vel_y = 0 # Stop upward movement
+            # Check for collision from top (player falling onto platform)
+            # Add a small buffer (e.g., 2 pixels) to the collision check for robustness
+            if self.player_vel_y >= 0 and player_rect.colliderect(platform) and \
+               player_rect.bottom >= platform.top and player_rect.bottom <= platform.top + self.player_vel_y + 2:
+                self.player_y = platform.top - self.player_size # Snap to top
+                self.player_vel_y = 0
+                was_on_ground_this_frame = True
+                if platform == self.goal_platform:
+                    self.win = True
+                    self.game_over = True
+            # Handle hitting bottom of platform (player jumping into it)
+            elif self.player_vel_y < 0 and player_rect.colliderect(platform) and \
+                 player_rect.top <= platform.bottom and player_rect.top >= platform.bottom - abs(self.player_vel_y) - 2:
+                self.player_y = platform.bottom # Snap to bottom
+                self.player_vel_y = 0 # Stop upward movement
+
+        # Update on_ground and coyote time counter
+        if was_on_ground_this_frame:
+            self.on_ground = True
+            self.coyote_time_counter = self.coyote_time_duration # Reset coyote time
+        else:
+            self.on_ground = False # Not currently touching ground
+            if self.coyote_time_counter > 0:
+                self.coyote_time_counter -= 1 # Decrement coyote time if not on ground
 
         # Check for falling off screen (Game Over)
-        if self.player_y > SCREEN_HEIGHT:
+        if self.player_y > BASE_SCREEN_HEIGHT:
             self.game_over = True
 
     def draw(self, screen):
@@ -576,18 +596,18 @@ class JumpKingGame(BaseGame):
             pygame.draw.rect(screen, GREEN, (self.player_x + self.player_size // 2 - bar_width // 2, self.player_y - 20, fill_width, bar_height)) # Fill
 
         if self.game_over:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150)) # Semi-transparent black
             screen.blit(overlay, (0, 0))
 
-            game_over_font = pygame.font.Font(None, 80)
+            game_over_font = pygame.font.Font(None, self.console._get_scaled_font_size(80))
             message = "You Win!" if self.win else "Game Over!"
             message_color = GREEN if self.win else RED
             message_text = game_over_font.render(message, True, message_color)
-            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+            restart_text = pygame.font.Font(None, self.console._get_scaled_font_size(40)).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
 
-            screen.blit(message_text, message_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
-            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)))
+            screen.blit(message_text, message_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(restart_text, restart_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 + 50)))
 
 
     def get_state(self):
@@ -602,6 +622,7 @@ class JumpKingGame(BaseGame):
             "on_ground": self.on_ground,
             "charging_jump": self.charging_jump,
             "jump_charge_time": self.jump_charge_time,
+            "coyote_time_counter": self.coyote_time_counter, # Save coyote time
             "platforms": platforms_data,
             "goal_platform": goal_platform_data,
             "game_over": self.game_over,
@@ -609,12 +630,13 @@ class JumpKingGame(BaseGame):
         }
 
     def set_state(self, state):
-        self.player_x = state.get("player_x", SCREEN_WIDTH // 2 - self.player_size // 2)
-        self.player_y = state.get("player_y", SCREEN_HEIGHT - 100 - self.player_size)
+        self.player_x = state.get("player_x", BASE_SCREEN_WIDTH // 2 - self.player_size // 2)
+        self.player_y = state.get("player_y", BASE_SCREEN_HEIGHT - 100 - self.player_size)
         self.player_vel_y = state.get("player_vel_y", 0)
         self.on_ground = state.get("on_ground", False)
         self.charging_jump = state.get("charging_jump", False)
         self.jump_charge_time = state.get("jump_charge_time", 0)
+        self.coyote_time_counter = state.get("coyote_time_counter", 0) # Load coyote time
         self.game_over = state.get("game_over", False)
         self.win = state.get("win", False)
 
@@ -647,8 +669,8 @@ class MazeGame(BaseGame):
         self.cell_size = 40
         self.size = "medium" # Default size
         self._set_size_params() # Set initial maze dimensions
-        self.maze_offset_x = (SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
-        self.maze_offset_y = (SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
+        self.maze_offset_x = (BASE_SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
+        self.maze_offset_y = (BASE_SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
         self.maze = [] # Stores maze cells (0: path, 1: wall)
         self.player_pos = [0, 0] # [col, row]
         self.end_pos = [0, 0] # [col, row]
@@ -668,8 +690,8 @@ class MazeGame(BaseGame):
             self.maze_width = 15
             self.maze_height = 10
         # Recalculate offsets based on new dimensions
-        self.maze_offset_x = (SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
-        self.maze_offset_y = (SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
+        self.maze_offset_x = (BASE_SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
+        self.maze_offset_y = (BASE_SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
 
     def set_size(self, maze_size_level):
         """Sets the maze size and updates parameters."""
@@ -797,18 +819,18 @@ class MazeGame(BaseGame):
         pygame.draw.circle(screen, BLUE, player_circle_center, self.cell_size // 3)
 
         if self.game_over:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150)) # Semi-transparent black
             screen.blit(overlay, (0, 0))
 
-            game_over_font = pygame.font.Font(None, 80)
+            game_over_font = pygame.font.Font(None, self.console._get_scaled_font_size(80))
             message = "You Win!" if self.win else "Game Over!"
             message_color = GREEN if self.win else RED
             message_text = game_over_font.render(message, True, message_color)
-            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+            restart_text = pygame.font.Font(None, self.console._get_scaled_font_size(40)).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
 
-            screen.blit(message_text, message_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
-            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)))
+            screen.blit(message_text, message_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(restart_text, restart_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 + 50)))
 
     def get_state(self):
         return {
@@ -840,8 +862,8 @@ class TetrisGame(BaseGame):
         self.grid_width = 10
         self.grid_height = 20
         self.block_size = 25
-        self.grid_offset_x = (SCREEN_WIDTH - self.grid_width * self.block_size) // 2
-        self.grid_offset_y = (SCREEN_HEIGHT - self.grid_height * self.block_size) // 2 - 50 # Adjust for score/next piece display
+        self.grid_offset_x = (BASE_SCREEN_WIDTH - self.grid_width * self.block_size) // 2
+        self.grid_offset_y = (BASE_SCREEN_HEIGHT - self.grid_height * self.block_size) // 2 - 50 # Adjust for score/next piece display
 
         self.grid = [[BLACK for _ in range(self.grid_width)] for _ in range(self.grid_height)]
         self.score = 0
@@ -1030,7 +1052,7 @@ class TetrisGame(BaseGame):
                                           self.block_size, self.block_size), 1) # Border
 
         # Draw next piece preview
-        font = pygame.font.Font(None, 30)
+        font = pygame.font.Font(None, self.console._get_scaled_font_size(30))
         next_text = font.render("NEXT:", True, WHITE)
         screen.blit(next_text, (self.grid_offset_x + self.grid_width * self.block_size + 20, self.grid_offset_y + 50))
         if self.next_piece:
@@ -1056,18 +1078,18 @@ class TetrisGame(BaseGame):
 
 
         if self.game_over:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150)) # Semi-transparent black
             screen.blit(overlay, (0, 0))
 
-            game_over_font = pygame.font.Font(None, 80)
+            game_over_font = pygame.font.Font(None, self.console._get_scaled_font_size(80))
             game_over_text = game_over_font.render("GAME OVER", True, RED)
             final_score_text = font.render(f"Final Score: {self.score}", True, WHITE)
-            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+            restart_text = pygame.font.Font(None, self.console._get_scaled_font_size(40)).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
 
-            screen.blit(game_over_text, game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
-            screen.blit(final_score_text, final_score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10)))
-            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80)))
+            screen.blit(game_over_text, game_over_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(final_score_text, final_score_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 + 10)))
+            screen.blit(restart_text, restart_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT // 2 + 80)))
 
 
     def get_state(self):
@@ -1181,33 +1203,42 @@ class SaveLoadManager:
 class GameConsole:
     """
     Manages the main game loop, active game state, and menu navigation.
+    Handles screen scaling and font scaling.
     """
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # Initial window size, can be resized by user
+        self.window_width = 1920
+        self.window_height = 1080
+        self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
         pygame.display.set_caption("Pygame Mini-Game Console")
+
+        # This is the internal surface where all game drawing happens at a fixed resolution
+        self.display_surface = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT))
+
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 50)
+        self.base_font_size = 50 # Base font size for calculations
+        self.font = pygame.font.Font(None, self.base_font_size) # Initial font, will be scaled
 
         self.games = {
             "pong": PongGame(self),
             "minesweeper": MinesweeperGame(self),
             "jump_king": JumpKingGame(self),
-            "maze": MazeGame(self), # New Maze Game instance
-            "tetris": TetrisGame(self) # New Tetris Game instance
+            "maze": MazeGame(self),
+            "tetris": TetrisGame(self)
         }
         self.active_game_key = "menu" # Start at the main menu
         self.save_load_manager = SaveLoadManager(GAME_SAVE_FILE)
 
         self.menu_options = [
-            ("Play Pong", "pong_difficulty_selection"), # Now leads to difficulty selection
-            ("Set Pong Difficulty", "pong_difficulty_settings"), # For changing difficulty without starting
-            ("Play Minesweeper", "minesweeper_difficulty_selection"), # Now leads to difficulty selection
-            ("Set Minesweeper Difficulty", "minesweeper_difficulty_settings"), # For changing difficulty without starting
+            ("Play Pong", "pong_difficulty_selection"),
+            ("Set Pong Difficulty", "pong_difficulty_settings"),
+            ("Play Minesweeper", "minesweeper_difficulty_selection"),
+            ("Set Minesweeper Difficulty", "minesweeper_difficulty_settings"),
             ("Play Jump King", "jump_king"),
-            ("Play Maze Game", "maze_size_selection"), # Now leads to size selection
-            ("Set Maze Size", "maze_size_settings"), # For changing size without starting
-            ("Play Tetris", "tetris"), # New Tetris game option
+            ("Play Maze Game", "maze_size_selection"),
+            ("Set Maze Size", "maze_size_settings"),
+            ("Play Tetris", "tetris"),
             ("Load Game", "load"),
             ("Help", "help"),
             ("Exit", "exit")
@@ -1250,23 +1281,42 @@ class GameConsole:
         self.help_menu_lines = []
         self._format_help_menu_content()
 
+    def _get_scaled_font_size(self, base_size):
+        """Calculates a scaled font size based on the current window height."""
+        # Scale factor based on current window height relative to base height
+        scale_factor = self.screen.get_height() / BASE_SCREEN_HEIGHT
+        return int(base_size * scale_factor)
+
+    def _scale_mouse_pos(self, pos):
+        """Converts mouse coordinates from actual window size to base screen size."""
+        current_window_width, current_window_height = self.screen.get_size()
+        scale_x = BASE_SCREEN_WIDTH / current_window_width
+        scale_y = BASE_SCREEN_HEIGHT / current_window_height
+        return int(pos[0] * scale_x), int(pos[1] * scale_y)
+
     def _format_help_menu_content(self):
         """Formats help menu content into lines for display."""
+        # Re-render help menu lines when font size might change
         self.help_menu_lines = []
         for title, text in self.help_menu_content.items():
-            self.help_menu_lines.append(self.font.render(title, True, YELLOW))
-            # Wrap text if too long (simple word wrap)
+            title_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+            self.help_menu_lines.append(title_font.render(title, True, YELLOW))
+            
+            content_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size * 0.6)) # Smaller font for content
             words = text.split(' ')
             current_line = ""
+            # Max width for text wrapping, scaled by current window width
+            max_line_width = int((BASE_SCREEN_WIDTH - 100) * (self.screen.get_width() / BASE_SCREEN_WIDTH))
+            
             for word in words:
                 test_line = current_line + word + " "
-                if self.font.size(test_line)[0] < SCREEN_WIDTH - 100: # 100px padding
+                if content_font.size(test_line)[0] < max_line_width:
                     current_line = test_line
                 else:
-                    self.help_menu_lines.append(self.font.render(current_line, True, WHITE))
+                    self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
                     current_line = word + " "
-            self.help_menu_lines.append(self.font.render(current_line, True, WHITE))
-            self.help_menu_lines.append(self.font.render("", True, WHITE)) # Blank line for spacing
+            self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
+            self.help_menu_lines.append(content_font.render("", True, WHITE)) # Blank line for spacing
 
 
     def set_active_game(self, game_key):
@@ -1288,6 +1338,11 @@ class GameConsole:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    # Update the actual window surface and re-render help text if needed
+                    self.window_width, self.window_height = event.size
+                    self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
+                    self._format_help_menu_content() # Reformat help text for new font size
                 elif self.active_game_key == "menu":
                     self._handle_menu_event(event)
                 elif self.active_game_key == "pong_difficulty_selection" or self.active_game_key == "pong_difficulty_settings":
@@ -1302,6 +1357,7 @@ class GameConsole:
                     # Pass events to the active game
                     self.games[self.active_game_key].handle_event(event)
 
+            # All drawing happens on the internal display_surface
             if self.active_game_key == "menu":
                 self._update_menu(dt)
                 self._draw_menu()
@@ -1320,8 +1376,10 @@ class GameConsole:
             else:
                 # Update and draw the active game
                 self.games[self.active_game_key].update(dt)
-                self.games[self.active_game_key].draw(self.screen)
+                self.games[self.active_game_key].draw(self.display_surface) # Draw to display_surface
 
+            # Scale the internal display_surface to the actual window size and blit it
+            self.screen.blit(pygame.transform.scale(self.display_surface, self.screen.get_size()), (0, 0))
             pygame.display.flip()
 
         pygame.quit()
@@ -1344,20 +1402,21 @@ class GameConsole:
         pass
 
     def _draw_menu(self):
-        """Draws the main menu screen."""
-        self.screen.fill(BLACK)
-        title_font = pygame.font.Font(None, 80)
+        """Draws the main menu screen on display_surface."""
+        self.display_surface.fill(BLACK)
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(80))
         title_text = title_font.render("Pygame Console", True, WHITE)
-        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
 
+        menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         for i, (text, _) in enumerate(self.menu_options):
             color = YELLOW if i == self.selected_menu_index else WHITE
-            menu_text = self.font.render(text, True, color)
-            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+            menu_text = menu_font.render(text, True, color)
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
 
-        save_hint_font = pygame.font.Font(None, 30)
+        save_hint_font = pygame.font.Font(None, self._get_scaled_font_size(30))
         save_hint_text = save_hint_font.render("Press 'S' to Save Current Game (if active)", True, LIGHT_GRAY)
-        self.screen.blit(save_hint_text, save_hint_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)))
+        self.display_surface.blit(save_hint_text, save_hint_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - 50)))
 
 
     def _execute_menu_option(self):
@@ -1418,20 +1477,21 @@ class GameConsole:
         pass # No dynamic updates needed here
 
     def _draw_pong_difficulty_menu(self, is_selection_menu):
-        """Draws the Pong difficulty menu."""
-        self.screen.fill(BLACK)
-        title_font = pygame.font.Font(None, 70)
+        """Draws the Pong difficulty menu on display_surface."""
+        self.display_surface.fill(BLACK)
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Pong Difficulty" if is_selection_menu else "Set Pong Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
 
+        menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         for i, (text, difficulty_level) in enumerate(self.pong_difficulty_options):
             color = YELLOW if i == self.selected_pong_difficulty_index else WHITE
             # Highlight current difficulty if it matches
             if difficulty_level == self.games["pong"].difficulty and difficulty_level != "back":
                 color = ORANGE # Use a different color for the currently active setting
-            menu_text = self.font.render(text, True, color)
-            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+            menu_text = menu_font.render(text, True, color)
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
 
     def _handle_minesweeper_difficulty_menu_event(self, event):
         """Handles events for the Minesweeper difficulty menu."""
@@ -1457,19 +1517,20 @@ class GameConsole:
         pass
 
     def _draw_minesweeper_difficulty_menu(self, is_selection_menu):
-        """Draws the Minesweeper difficulty menu."""
-        self.screen.fill(BLACK)
-        title_font = pygame.font.Font(None, 70)
+        """Draws the Minesweeper difficulty menu on display_surface."""
+        self.display_surface.fill(BLACK)
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Minesweeper Difficulty" if is_selection_menu else "Set Minesweeper Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
 
+        menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         for i, (text, difficulty_level) in enumerate(self.minesweeper_difficulty_options):
             color = YELLOW if i == self.selected_minesweeper_difficulty_index else WHITE
             if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
                 color = ORANGE
-            menu_text = self.font.render(text, True, color)
-            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+            menu_text = menu_font.render(text, True, color)
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
 
     def _handle_maze_size_menu_event(self, event):
         """Handles events for the Maze size menu."""
@@ -1495,19 +1556,20 @@ class GameConsole:
         pass
 
     def _draw_maze_size_menu(self, is_selection_menu):
-        """Draws the Maze size menu."""
-        self.screen.fill(BLACK)
-        title_font = pygame.font.Font(None, 70)
+        """Draws the Maze size menu on display_surface."""
+        self.display_surface.fill(BLACK)
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Maze Size" if is_selection_menu else "Set Maze Size"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
 
+        menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         for i, (text, size_level) in enumerate(self.maze_size_options):
             color = YELLOW if i == self.selected_maze_size_index else WHITE
             if size_level == self.games["maze"].size and size_level != "back":
                 color = ORANGE
-            menu_text = self.font.render(text, True, color)
-            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+            menu_text = menu_font.render(text, True, color)
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
 
 
     def _handle_help_menu_event(self, event):
@@ -1521,19 +1583,21 @@ class GameConsole:
         pass # No dynamic updates needed here
 
     def _draw_help_menu(self):
-        """Draws the Help menu."""
-        self.screen.fill(BLACK)
-        title_font = pygame.font.Font(None, 70)
+        """Draws the Help menu on display_surface."""
+        self.display_surface.fill(BLACK)
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text = title_font.render("Help & Controls", True, WHITE)
-        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 50)))
+        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 50)))
 
         y_offset = 150
+        # Use the pre-formatted lines from _format_help_menu_content
         for line_surface in self.help_menu_lines:
-            self.screen.blit(line_surface, (50, y_offset))
-            y_offset += line_surface.get_height() + 5 # Add some line spacing
+            self.display_surface.blit(line_surface, (50, y_offset))
+            y_offset += line_surface.get_height() + self._get_scaled_font_size(5) # Add some line spacing
 
-        return_text = self.font.render("Press ESC or ENTER to return to Main Menu", True, LIGHT_GRAY)
-        self.screen.blit(return_text, return_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)))
+        return_text_font = pygame.font.Font(None, self._get_scaled_font_size(40))
+        return_text = return_text_font.render("Press ESC or ENTER to return to Main Menu", True, LIGHT_GRAY)
+        self.display_surface.blit(return_text, return_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - 50)))
 
 
     def _save_current_game(self):
