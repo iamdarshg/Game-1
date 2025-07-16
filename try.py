@@ -486,7 +486,7 @@ class JumpKingGame(BaseGame):
         # Calculate max jump height to ensure platforms are reachable
         # Corrected formula for maximum height reached given initial upward velocity (abs(jump_power))
         # h = v0^2 / (2 * g)
-        max_jump_height = (self.jump_power ** 2) / (2 * self.gravity)
+        max_jump_height = (self.jump_power ** 2) / (2 * self.gravity)//2
         
         # Define min/max gaps based on jump height
         # Ensure min_vertical_gap is at least 1 to avoid empty range for random.randint
@@ -510,7 +510,7 @@ class JumpKingGame(BaseGame):
 
         # Generate platforms until we are above the target goal Y
         while current_world_y > goal_y_target + 100: # Ensure enough space for goal platform
-            width = random.randint(60, 150)
+            width = random.randint(80, 150)
             height = 20
             x = random.randint(50, BASE_SCREEN_WIDTH - width - 50)
             
