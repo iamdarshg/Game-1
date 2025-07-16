@@ -21,6 +21,7 @@ GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
 ORANGE = (255, 165, 0)
 PURPLE = (128, 0, 128)
+BROWN = (139, 69, 19)
 
 # --- Base Game Class ---
 class BaseGame:
@@ -92,8 +93,11 @@ class PongGame(BaseGame):
         self.difficulty = difficulty_level
         self._set_difficulty_speed()
         # Reset ball to apply new speed immediately if game is active
-        if not self.game_over:
+        if not self.game_over: # Only reset if game is not already over
             self._reset_ball()
+        else: # If game is over, just update speeds for next reset
+            pass
+
 
     def reset(self):
         """Resets Pong game state."""
@@ -225,16 +229,39 @@ class PongGame(BaseGame):
 class MinesweeperGame(BaseGame):
     def __init__(self, console):
         super().__init__(console)
-        self.rows = 10
-        self.cols = 10
-        self.num_mines = 15
         self.cell_size = 40
+        self.difficulty = "normal" # Default difficulty
+        self._set_difficulty_params()
         self.board_offset_x = (SCREEN_WIDTH - self.cols * self.cell_size) // 2
         self.board_offset_y = (SCREEN_HEIGHT - self.rows * self.cell_size) // 2
         self.board = []  # Stores (is_mine, num_adjacent_mines, is_revealed, is_flagged)
         self.game_over = False
         self.win = False
         self.reset()
+
+    def _set_difficulty_params(self):
+        """Sets board dimensions and mine count based on difficulty."""
+        if self.difficulty == "easy":
+            self.rows = 8
+            self.cols = 8
+            self.num_mines = 10
+        elif self.difficulty == "hard":
+            self.rows = 12
+            self.cols = 12
+            self.num_mines = 30
+        else: # Normal
+            self.rows = 10
+            self.cols = 10
+            self.num_mines = 15
+        # Recalculate offsets based on new dimensions
+        self.board_offset_x = (SCREEN_WIDTH - self.cols * self.cell_size) // 2
+        self.board_offset_y = (SCREEN_HEIGHT - self.rows * self.cell_size) // 2
+
+    def set_difficulty(self, difficulty_level):
+        """Sets the game difficulty and updates parameters."""
+        self.difficulty = difficulty_level
+        self._set_difficulty_params()
+        self.reset() # Reset board with new difficulty settings
 
     def reset(self):
         """Resets Minesweeper game state."""
@@ -388,10 +415,13 @@ class MinesweeperGame(BaseGame):
         return {
             "board": self.board,
             "game_over": self.game_over,
-            "win": self.win
+            "win": self.win,
+            "difficulty": self.difficulty # Save difficulty
         }
 
     def set_state(self, state):
+        self.difficulty = state.get("difficulty", "normal") # Load difficulty first
+        self._set_difficulty_params() # Apply loaded difficulty parameters
         self.board = state.get("board", [[(False, 0, False, False) for _ in range(self.cols)] for _ in range(self.rows)])
         self.game_over = state.get("game_over", False)
         self.win = state.get("win", False)
@@ -606,6 +636,171 @@ class JumpKingGame(BaseGame):
         if not self.platforms:
             self._generate_platforms()
 
+# --- Maze Game ---
+class MazeGame(BaseGame):
+    def __init__(self, console):
+        super().__init__(console)
+        self.cell_size = 40
+        self.maze_width = 15 # Cells
+        self.maze_height = 10 # Cells
+        self.maze_offset_x = (SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
+        self.maze_offset_y = (SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
+        self.maze = [] # Stores maze cells (0: path, 1: wall)
+        self.player_pos = [0, 0] # [col, row]
+        self.end_pos = [0, 0] # [col, row]
+        self.game_over = False
+        self.win = False
+        self.reset()
+
+    def reset(self):
+        """Resets Maze game state and generates a new maze."""
+        self.game_over = False
+        self.win = False
+        self._generate_maze()
+        self.player_pos = [0, 0] # Start at top-left
+        self.end_pos = [self.maze_width - 1, self.maze_height - 1] # End at bottom-right
+        # Ensure start and end are paths
+        self.maze[self.player_pos[1]][self.player_pos[0]] = 0
+        self.maze[self.end_pos[1]][self.end_pos[0]] = 0
+
+
+    def _generate_maze(self):
+        """Generates a simple maze using a randomized Prim's algorithm."""
+        # Initialize grid with all walls
+        self.maze = [[1 for _ in range(self.maze_width)] for _ in range(self.maze_height)]
+
+        # Choose a random starting cell and mark it as a path
+        start_x, start_y = random.randint(0, self.maze_width - 1), random.randint(0, self.maze_height - 1)
+        self.maze[start_y][start_x] = 0
+
+        # List of walls to be processed
+        walls = []
+        # Add walls of the starting cell to the list
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = start_x + dx, start_y + dy
+            if 0 <= nx < self.maze_width and 0 <= ny < self.maze_height and self.maze[ny][nx] == 1:
+                walls.append(((nx, ny), (start_x, start_y))) # (wall_coords, passage_coords)
+
+        while walls:
+            # Pick a random wall from the list
+            wall_index = random.randrange(len(walls))
+            (wx, wy), (px, py) = walls.pop(wall_index)
+
+            # Check if the wall is still a wall and the cell on the other side is unvisited
+            if 0 <= wx < self.maze_width and 0 <= wy < self.maze_height and self.maze[wy][wx] == 1:
+                # Count visited neighbors for the cell on the other side of the wall
+                visited_neighbors = 0
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = wx + dx, wy + dy
+                    if 0 <= nx < self.maze_width and 0 <= ny < self.maze_height and self.maze[ny][nx] == 0:
+                        visited_neighbors += 1
+
+                # If the cell on the other side has only one visited neighbor (the current path)
+                if visited_neighbors == 1:
+                    self.maze[wy][wx] = 0 # Carve a path through the wall
+                    # Add new walls of the newly carved cell
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        nx, ny = wx + dx, wy + dy
+                        if 0 <= nx < self.maze_width and 0 <= ny < self.maze_height and self.maze[ny][nx] == 1:
+                            walls.append(((nx, ny), (wx, wy)))
+
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.console.set_active_game("menu")
+            elif event.key == pygame.K_r and (self.game_over or self.win):
+                self.reset()
+            elif not self.game_over and not self.win:
+                new_x, new_y = self.player_pos[0], self.player_pos[1]
+                if event.key == pygame.K_LEFT:
+                    new_x -= 1
+                elif event.key == pygame.K_RIGHT:
+                    new_x += 1
+                elif event.key == pygame.K_UP:
+                    new_y -= 1
+                elif event.key == pygame.K_DOWN:
+                    new_y += 1
+
+                # Check for valid move (within bounds and not a wall)
+                if (0 <= new_x < self.maze_width and
+                    0 <= new_y < self.maze_height and
+                    self.maze[new_y][new_x] == 0): # 0 means path
+                    self.player_pos = [new_x, new_y]
+                    if self.player_pos == self.end_pos:
+                        self.win = True
+                        self.game_over = True
+
+    def update(self, dt):
+        pass # Maze game logic is mostly event-driven
+
+    def draw(self, screen):
+        screen.fill(BLACK)
+
+        # Draw maze
+        for r in range(self.maze_height):
+            for c in range(self.maze_width):
+                x = self.maze_offset_x + c * self.cell_size
+                y = self.maze_offset_y + r * self.cell_size
+                cell_rect = pygame.Rect(x, y, self.cell_size, self.cell_size)
+
+                if self.maze[r][c] == 1: # Wall
+                    pygame.draw.rect(screen, BROWN, cell_rect)
+                else: # Path
+                    pygame.draw.rect(screen, LIGHT_GRAY, cell_rect)
+
+                # Draw borders for all cells
+                pygame.draw.rect(screen, BLACK, cell_rect, 1)
+
+        # Draw start and end points
+        start_rect = pygame.Rect(self.maze_offset_x + self.player_pos[0] * self.cell_size,
+                                 self.maze_offset_y + self.player_pos[1] * self.cell_size,
+                                 self.cell_size, self.cell_size)
+        end_rect = pygame.Rect(self.maze_offset_x + self.end_pos[0] * self.cell_size,
+                               self.maze_offset_y + self.end_pos[1] * self.cell_size,
+                               self.cell_size, self.cell_size)
+
+        pygame.draw.rect(screen, GREEN, start_rect, 4) # Start marker
+        pygame.draw.circle(screen, RED, end_rect.center, self.cell_size // 3) # End marker
+
+        # Draw player
+        player_circle_center = (self.maze_offset_x + self.player_pos[0] * self.cell_size + self.cell_size // 2,
+                                self.maze_offset_y + self.player_pos[1] * self.cell_size + self.cell_size // 2)
+        pygame.draw.circle(screen, BLUE, player_circle_center, self.cell_size // 3)
+
+        if self.game_over:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150)) # Semi-transparent black
+            screen.blit(overlay, (0, 0))
+
+            game_over_font = pygame.font.Font(None, 80)
+            message = "You Win!" if self.win else "Game Over!"
+            message_color = GREEN if self.win else RED
+            message_text = game_over_font.render(message, True, message_color)
+            restart_text = pygame.font.Font(None, 40).render("Press R to Restart or ESC to Menu", True, LIGHT_GRAY)
+
+            screen.blit(message_text, message_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)))
+            screen.blit(restart_text, restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)))
+
+    def get_state(self):
+        return {
+            "maze": self.maze,
+            "player_pos": self.player_pos,
+            "end_pos": self.end_pos,
+            "game_over": self.game_over,
+            "win": self.win
+        }
+
+    def set_state(self, state):
+        self.maze = state.get("maze", [])
+        self.player_pos = state.get("player_pos", [0, 0])
+        self.end_pos = state.get("end_pos", [self.maze_width - 1, self.maze_height - 1])
+        self.game_over = state.get("game_over", False)
+        self.win = state.get("win", False)
+        # If maze is empty (e.g., first load or corrupted), generate a new one
+        if not self.maze or not self.maze[0]:
+            self.reset()
+
 
 # --- Save/Load Manager ---
 class SaveLoadManager:
@@ -662,18 +857,21 @@ class GameConsole:
         self.games = {
             "pong": PongGame(self),
             "minesweeper": MinesweeperGame(self),
-            "jump_king": JumpKingGame(self)
+            "jump_king": JumpKingGame(self),
+            "maze": MazeGame(self) # New Maze Game instance
         }
         self.active_game_key = "menu" # Start at the main menu
         self.save_load_manager = SaveLoadManager(GAME_SAVE_FILE)
 
         self.menu_options = [
-            ("Play Pong", "pong"),
-            ("Set Pong Difficulty", "pong_difficulty"), # New option
-            ("Play Minesweeper", "minesweeper"),
+            ("Play Pong", "pong_difficulty_selection"), # Now leads to difficulty selection
+            ("Set Pong Difficulty", "pong_difficulty_settings"), # For changing difficulty without starting
+            ("Play Minesweeper", "minesweeper_difficulty_selection"), # Now leads to difficulty selection
+            ("Set Minesweeper Difficulty", "minesweeper_difficulty_settings"), # For changing difficulty without starting
             ("Play Jump King", "jump_king"),
+            ("Play Maze Game", "maze"), # New Maze game option
             ("Load Game", "load"),
-            ("Help", "help"), # New option
+            ("Help", "help"),
             ("Exit", "exit")
         ]
         self.selected_menu_index = 0
@@ -686,11 +884,21 @@ class GameConsole:
         ]
         self.selected_pong_difficulty_index = 0
 
+        self.minesweeper_difficulty_options = [
+            ("Easy (8x8, 10 mines)", "easy"),
+            ("Normal (10x10, 15 mines)", "normal"),
+            ("Hard (12x12, 30 mines)", "hard"),
+            ("Back to Main Menu", "back")
+        ]
+        self.selected_minesweeper_difficulty_index = 0
+
+
         self.help_menu_content = {
-            "Pong": "Controls: UP/DOWN arrow keys for paddle. ESC to menu, R to restart.",
-            "Minesweeper": "Controls: Left Click to reveal, Right Click to flag. ESC to menu, R to restart.",
+            "Pong": "Controls: UP/DOWN arrow keys for paddle. ESC to menu, R to restart. Difficulty affects AI & ball speed.",
+            "Minesweeper": "Controls: Left Click to reveal, Right Click to flag. ESC to menu, R to restart. Difficulty affects board size & mines.",
             "Jump King": "Controls: LEFT/RIGHT arrow keys to move. Hold SPACE to charge jump, release to jump. ESC to menu, R to restart.",
-            "Console": "Press 'S' in any game to save its state. Load from Main Menu."
+            "Maze Game": "Controls: ARROW keys to move. Find the red circle. ESC to menu, R to restart.",
+            "Console": "Press 'S' in any game to save its state. Load from Main Menu. Use 'Set Difficulty' options to change difficulty without starting a new game."
         }
         self.help_menu_lines = []
         self._format_help_menu_content()
@@ -735,8 +943,10 @@ class GameConsole:
                     running = False
                 elif self.active_game_key == "menu":
                     self._handle_menu_event(event)
-                elif self.active_game_key == "pong_difficulty":
+                elif self.active_game_key == "pong_difficulty_selection" or self.active_game_key == "pong_difficulty_settings":
                     self._handle_pong_difficulty_menu_event(event)
+                elif self.active_game_key == "minesweeper_difficulty_selection" or self.active_game_key == "minesweeper_difficulty_settings":
+                    self._handle_minesweeper_difficulty_menu_event(event)
                 elif self.active_game_key == "help":
                     self._handle_help_menu_event(event)
                 else:
@@ -746,9 +956,12 @@ class GameConsole:
             if self.active_game_key == "menu":
                 self._update_menu(dt)
                 self._draw_menu()
-            elif self.active_game_key == "pong_difficulty":
+            elif self.active_game_key == "pong_difficulty_selection" or self.active_game_key == "pong_difficulty_settings":
                 self._update_pong_difficulty_menu(dt)
-                self._draw_pong_difficulty_menu()
+                self._draw_pong_difficulty_menu(self.active_game_key == "pong_difficulty_selection") # Pass flag for title
+            elif self.active_game_key == "minesweeper_difficulty_selection" or self.active_game_key == "minesweeper_difficulty_settings":
+                self._update_minesweeper_difficulty_menu(dt)
+                self._draw_minesweeper_difficulty_menu(self.active_game_key == "minesweeper_difficulty_selection") # Pass flag for title
             elif self.active_game_key == "help":
                 self._update_help_menu(dt)
                 self._draw_help_menu()
@@ -799,13 +1012,24 @@ class GameConsole:
         """Executes the selected menu option."""
         selected_action = self.menu_options[self.selected_menu_index][1]
 
-        if selected_action in self.games:
-            self.set_active_game(selected_action)
+        if selected_action == "pong_difficulty_selection":
+            self.active_game_key = "pong_difficulty_selection"
+            self.selected_pong_difficulty_index = 0
+        elif selected_action == "pong_difficulty_settings":
+            self.active_game_key = "pong_difficulty_settings"
+            self.selected_pong_difficulty_index = 0
+        elif selected_action == "minesweeper_difficulty_selection":
+            self.active_game_key = "minesweeper_difficulty_selection"
+            self.selected_minesweeper_difficulty_index = 0
+        elif selected_action == "minesweeper_difficulty_settings":
+            self.active_game_key = "minesweeper_difficulty_settings"
+            self.selected_minesweeper_difficulty_index = 0
+        elif selected_action == "jump_king":
+            self.set_active_game("jump_king")
+        elif selected_action == "maze":
+            self.set_active_game("maze")
         elif selected_action == "load":
             self._load_saved_game()
-        elif selected_action == "pong_difficulty":
-            self.active_game_key = "pong_difficulty"
-            self.selected_pong_difficulty_index = 0 # Reset selection when entering
         elif selected_action == "help":
             self.active_game_key = "help"
         elif selected_action == "exit":
@@ -826,17 +1050,21 @@ class GameConsole:
                 else:
                     self.games["pong"].set_difficulty(selected_difficulty_action)
                     print(f"Pong difficulty set to: {selected_difficulty_action.capitalize()}")
-                    self.active_game_key = "menu" # Return to main menu after selection
+                    if self.active_game_key == "pong_difficulty_selection": # If coming from "Play Pong"
+                        self.set_active_game("pong") # Start the game
+                    else: # If coming from "Set Pong Difficulty"
+                        self.active_game_key = "menu" # Return to main menu
 
     def _update_pong_difficulty_menu(self, dt):
         """Updates Pong difficulty menu logic."""
         pass # No dynamic updates needed here
 
-    def _draw_pong_difficulty_menu(self):
+    def _draw_pong_difficulty_menu(self, is_selection_menu):
         """Draws the Pong difficulty menu."""
         self.screen.fill(BLACK)
         title_font = pygame.font.Font(None, 70)
-        title_text = title_font.render("Set Pong Difficulty", True, WHITE)
+        title_text_str = "Select Pong Difficulty" if is_selection_menu else "Set Pong Difficulty"
+        title_text = title_font.render(title_text_str, True, WHITE)
         self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
 
         for i, (text, difficulty_level) in enumerate(self.pong_difficulty_options):
@@ -846,6 +1074,45 @@ class GameConsole:
                 color = ORANGE # Use a different color for the currently active setting
             menu_text = self.font.render(text, True, color)
             self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+
+    def _handle_minesweeper_difficulty_menu_event(self, event):
+        """Handles events for the Minesweeper difficulty menu."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                self.selected_minesweeper_difficulty_index = (self.selected_minesweeper_difficulty_index - 1) % len(self.minesweeper_difficulty_options)
+            elif event.key == pygame.K_DOWN:
+                self.selected_minesweeper_difficulty_index = (self.selected_minesweeper_difficulty_index + 1) % len(self.minesweeper_difficulty_options)
+            elif event.key == pygame.K_RETURN:
+                selected_difficulty_action = self.minesweeper_difficulty_options[self.selected_minesweeper_difficulty_index][1]
+                if selected_difficulty_action == "back":
+                    self.active_game_key = "menu"
+                else:
+                    self.games["minesweeper"].set_difficulty(selected_difficulty_action)
+                    print(f"Minesweeper difficulty set to: {selected_difficulty_action.capitalize()}")
+                    if self.active_game_key == "minesweeper_difficulty_selection": # If coming from "Play Minesweeper"
+                        self.set_active_game("minesweeper") # Start the game
+                    else: # If coming from "Set Minesweeper Difficulty"
+                        self.active_game_key = "menu" # Return to main menu
+
+    def _update_minesweeper_difficulty_menu(self, dt):
+        """Updates Minesweeper difficulty menu logic."""
+        pass
+
+    def _draw_minesweeper_difficulty_menu(self, is_selection_menu):
+        """Draws the Minesweeper difficulty menu."""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 70)
+        title_text_str = "Select Minesweeper Difficulty" if is_selection_menu else "Set Minesweeper Difficulty"
+        title_text = title_font.render(title_text_str, True, WHITE)
+        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+
+        for i, (text, difficulty_level) in enumerate(self.minesweeper_difficulty_options):
+            color = YELLOW if i == self.selected_minesweeper_difficulty_index else WHITE
+            if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
+                color = ORANGE
+            menu_text = self.font.render(text, True, color)
+            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+
 
     def _handle_help_menu_event(self, event):
         """Handles events for the Help menu."""
