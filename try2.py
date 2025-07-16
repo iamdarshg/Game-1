@@ -5,8 +5,8 @@ import os
 import random
 
 # --- Constants ---
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1920
+SCREEN_HEIGHT = 1080
 FPS = 60
 GAME_SAVE_FILE = "game_console_save.pkl"
 
@@ -63,14 +63,37 @@ class PongGame(BaseGame):
         self.paddle_width = 20
         self.paddle_height = 100
         self.ball_size = 20
-        self.paddle_speed = 7
-        self.ball_speed_x = 5 * random.choice([-1, 1])
-        self.ball_speed_y = 5 * random.choice([-1, 1])
+        self.player_paddle_speed = 7 # Player's speed is constant
+        self.ai_paddle_speed_base = 5 # Base AI speed
+        self.ball_speed_x_base = 5
+        self.ball_speed_y_base = 5
         self.player_score = 0
         self.ai_score = 0
         self.max_score = 5
         self.game_over = False
+        self.difficulty = "normal" # Default difficulty
+        self._set_difficulty_speed()
         self.reset() # Initial setup
+
+    def _set_difficulty_speed(self):
+        """Adjusts AI speed and ball speed based on difficulty."""
+        if self.difficulty == "easy":
+            self.ai_paddle_speed = self.ai_paddle_speed_base * 0.6
+            self.ball_speed_multiplier = 0.8
+        elif self.difficulty == "hard":
+            self.ai_paddle_speed = self.ai_paddle_speed_base * 1.2
+            self.ball_speed_multiplier = 1.2
+        else: # Normal
+            self.ai_paddle_speed = self.ai_paddle_speed_base * 0.8
+            self.ball_speed_multiplier = 1.0
+
+    def set_difficulty(self, difficulty_level):
+        """Sets the game difficulty and updates speeds."""
+        self.difficulty = difficulty_level
+        self._set_difficulty_speed()
+        # Reset ball to apply new speed immediately if game is active
+        if not self.game_over:
+            self._reset_ball()
 
     def reset(self):
         """Resets Pong game state."""
@@ -78,8 +101,8 @@ class PongGame(BaseGame):
         self.ai_paddle_y = (SCREEN_HEIGHT - self.paddle_height) // 2
         self.ball_x = SCREEN_WIDTH // 2 - self.ball_size // 2
         self.ball_y = SCREEN_HEIGHT // 2 - self.ball_size // 2
-        self.ball_speed_x = 5 * random.choice([-1, 1])
-        self.ball_speed_y = 5 * random.choice([-1, 1])
+        self.ball_speed_x = self.ball_speed_x_base * self.ball_speed_multiplier * random.choice([-1, 1])
+        self.ball_speed_y = self.ball_speed_y_base * self.ball_speed_multiplier * random.choice([-1, 1])
         self.player_score = 0
         self.ai_score = 0
         self.game_over = False
@@ -98,9 +121,9 @@ class PongGame(BaseGame):
         # Player paddle movement
         keys = pygame.key.get_pressed()
         if keys[pygame.K_UP]:
-            self.player_paddle_y -= self.paddle_speed
+            self.player_paddle_y -= self.player_paddle_speed
         if keys[pygame.K_DOWN]:
-            self.player_paddle_y += self.paddle_speed
+            self.player_paddle_y += self.player_paddle_speed
         self.player_paddle_y = max(0, min(self.player_paddle_y, SCREEN_HEIGHT - self.paddle_height))
 
         # Ball movement
@@ -120,7 +143,7 @@ class PongGame(BaseGame):
             self.ball_speed_x *= -1
             # Add a slight random variation to y-speed for more dynamic play
             self.ball_speed_y += random.uniform(-0.5, 0.5)
-            self.ball_speed_y = max(-10, min(10, self.ball_speed_y)) # Cap speed
+            self.ball_speed_y = max(-10 * self.ball_speed_multiplier, min(10 * self.ball_speed_multiplier, self.ball_speed_y)) # Cap speed
 
         # Ball out of bounds (scoring)
         if self.ball_x < 0:
@@ -132,9 +155,9 @@ class PongGame(BaseGame):
 
         # AI paddle movement (simple AI)
         if self.ai_paddle_y + self.paddle_height / 2 < self.ball_y:
-            self.ai_paddle_y += self.paddle_speed * 0.8 # Slightly slower than player
+            self.ai_paddle_y += self.ai_paddle_speed
         elif self.ai_paddle_y + self.paddle_height / 2 > self.ball_y:
-            self.ai_paddle_y -= self.paddle_speed * 0.8
+            self.ai_paddle_y -= self.ai_paddle_speed
         self.ai_paddle_y = max(0, min(self.ai_paddle_y, SCREEN_HEIGHT - self.paddle_height))
 
         # Check for game over
@@ -145,8 +168,9 @@ class PongGame(BaseGame):
         """Resets ball position and direction after a score."""
         self.ball_x = SCREEN_WIDTH // 2 - self.ball_size // 2
         self.ball_y = SCREEN_HEIGHT // 2 - self.ball_size // 2
-        self.ball_speed_x = 5 * random.choice([-1, 1])
-        self.ball_speed_y = 5 * random.choice([-1, 1])
+        self.ball_speed_x = self.ball_speed_x_base * self.ball_speed_multiplier * random.choice([-1, 1])
+        self.ball_speed_y = self.ball_speed_y_base * self.ball_speed_multiplier * random.choice([-1, 1])
+
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -179,7 +203,8 @@ class PongGame(BaseGame):
             "ball_speed_y": self.ball_speed_y,
             "player_score": self.player_score,
             "ai_score": self.ai_score,
-            "game_over": self.game_over
+            "game_over": self.game_over,
+            "difficulty": self.difficulty # Save difficulty
         }
 
     def set_state(self, state):
@@ -187,11 +212,13 @@ class PongGame(BaseGame):
         self.ai_paddle_y = state.get("ai_paddle_y", (SCREEN_HEIGHT - self.paddle_height) // 2)
         self.ball_x = state.get("ball_x", SCREEN_WIDTH // 2 - self.ball_size // 2)
         self.ball_y = state.get("ball_y", SCREEN_HEIGHT // 2 - self.ball_size // 2)
-        self.ball_speed_x = state.get("ball_speed_x", 5 * random.choice([-1, 1]))
-        self.ball_speed_y = state.get("ball_speed_y", 5 * random.choice([-1, 1]))
         self.player_score = state.get("player_score", 0)
         self.ai_score = state.get("ai_score", 0)
         self.game_over = state.get("game_over", False)
+        self.difficulty = state.get("difficulty", "normal") # Load difficulty
+        self._set_difficulty_speed() # Apply loaded difficulty speed
+        self.ball_speed_x = state.get("ball_speed_x", self.ball_speed_x_base * self.ball_speed_multiplier * random.choice([-1, 1]))
+        self.ball_speed_y = state.get("ball_speed_y", self.ball_speed_y_base * self.ball_speed_multiplier * random.choice([-1, 1]))
 
 
 # --- Minesweeper Game ---
@@ -642,12 +669,50 @@ class GameConsole:
 
         self.menu_options = [
             ("Play Pong", "pong"),
+            ("Set Pong Difficulty", "pong_difficulty"), # New option
             ("Play Minesweeper", "minesweeper"),
             ("Play Jump King", "jump_king"),
             ("Load Game", "load"),
+            ("Help", "help"), # New option
             ("Exit", "exit")
         ]
         self.selected_menu_index = 0
+
+        self.pong_difficulty_options = [
+            ("Easy", "easy"),
+            ("Normal", "normal"),
+            ("Hard", "hard"),
+            ("Back to Main Menu", "back")
+        ]
+        self.selected_pong_difficulty_index = 0
+
+        self.help_menu_content = {
+            "Pong": "Controls: UP/DOWN arrow keys for paddle. ESC to menu, R to restart.",
+            "Minesweeper": "Controls: Left Click to reveal, Right Click to flag. ESC to menu, R to restart.",
+            "Jump King": "Controls: LEFT/RIGHT arrow keys to move. Hold SPACE to charge jump, release to jump. ESC to menu, R to restart.",
+            "Console": "Press 'S' in any game to save its state. Load from Main Menu."
+        }
+        self.help_menu_lines = []
+        self._format_help_menu_content()
+
+    def _format_help_menu_content(self):
+        """Formats help menu content into lines for display."""
+        self.help_menu_lines = []
+        for title, text in self.help_menu_content.items():
+            self.help_menu_lines.append(self.font.render(title, True, YELLOW))
+            # Wrap text if too long (simple word wrap)
+            words = text.split(' ')
+            current_line = ""
+            for word in words:
+                test_line = current_line + word + " "
+                if self.font.size(test_line)[0] < SCREEN_WIDTH - 100: # 100px padding
+                    current_line = test_line
+                else:
+                    self.help_menu_lines.append(self.font.render(current_line, True, WHITE))
+                    current_line = word + " "
+            self.help_menu_lines.append(self.font.render(current_line, True, WHITE))
+            self.help_menu_lines.append(self.font.render("", True, WHITE)) # Blank line for spacing
+
 
     def set_active_game(self, game_key):
         """Sets the currently active game."""
@@ -670,6 +735,10 @@ class GameConsole:
                     running = False
                 elif self.active_game_key == "menu":
                     self._handle_menu_event(event)
+                elif self.active_game_key == "pong_difficulty":
+                    self._handle_pong_difficulty_menu_event(event)
+                elif self.active_game_key == "help":
+                    self._handle_help_menu_event(event)
                 else:
                     # Pass events to the active game
                     self.games[self.active_game_key].handle_event(event)
@@ -677,6 +746,12 @@ class GameConsole:
             if self.active_game_key == "menu":
                 self._update_menu(dt)
                 self._draw_menu()
+            elif self.active_game_key == "pong_difficulty":
+                self._update_pong_difficulty_menu(dt)
+                self._draw_pong_difficulty_menu()
+            elif self.active_game_key == "help":
+                self._update_help_menu(dt)
+                self._draw_help_menu()
             else:
                 # Update and draw the active game
                 self.games[self.active_game_key].update(dt)
@@ -688,7 +763,7 @@ class GameConsole:
         sys.exit()
 
     def _handle_menu_event(self, event):
-        """Handles events when the menu is active."""
+        """Handles events when the main menu is active."""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
                 self.selected_menu_index = (self.selected_menu_index - 1) % len(self.menu_options)
@@ -700,7 +775,7 @@ class GameConsole:
                 self._save_current_game()
 
     def _update_menu(self, dt):
-        """Updates menu logic (currently none needed beyond event handling)."""
+        """Updates main menu logic (currently none needed beyond event handling)."""
         pass
 
     def _draw_menu(self):
@@ -728,13 +803,79 @@ class GameConsole:
             self.set_active_game(selected_action)
         elif selected_action == "load":
             self._load_saved_game()
+        elif selected_action == "pong_difficulty":
+            self.active_game_key = "pong_difficulty"
+            self.selected_pong_difficulty_index = 0 # Reset selection when entering
+        elif selected_action == "help":
+            self.active_game_key = "help"
         elif selected_action == "exit":
             pygame.quit()
             sys.exit()
 
+    def _handle_pong_difficulty_menu_event(self, event):
+        """Handles events for the Pong difficulty menu."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                self.selected_pong_difficulty_index = (self.selected_pong_difficulty_index - 1) % len(self.pong_difficulty_options)
+            elif event.key == pygame.K_DOWN:
+                self.selected_pong_difficulty_index = (self.selected_pong_difficulty_index + 1) % len(self.pong_difficulty_options)
+            elif event.key == pygame.K_RETURN:
+                selected_difficulty_action = self.pong_difficulty_options[self.selected_pong_difficulty_index][1]
+                if selected_difficulty_action == "back":
+                    self.active_game_key = "menu"
+                else:
+                    self.games["pong"].set_difficulty(selected_difficulty_action)
+                    print(f"Pong difficulty set to: {selected_difficulty_action.capitalize()}")
+                    self.active_game_key = "menu" # Return to main menu after selection
+
+    def _update_pong_difficulty_menu(self, dt):
+        """Updates Pong difficulty menu logic."""
+        pass # No dynamic updates needed here
+
+    def _draw_pong_difficulty_menu(self):
+        """Draws the Pong difficulty menu."""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 70)
+        title_text = title_font.render("Set Pong Difficulty", True, WHITE)
+        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+
+        for i, (text, difficulty_level) in enumerate(self.pong_difficulty_options):
+            color = YELLOW if i == self.selected_pong_difficulty_index else WHITE
+            # Highlight current difficulty if it matches
+            if difficulty_level == self.games["pong"].difficulty and difficulty_level != "back":
+                color = ORANGE # Use a different color for the currently active setting
+            menu_text = self.font.render(text, True, color)
+            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+
+    def _handle_help_menu_event(self, event):
+        """Handles events for the Help menu."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+                self.active_game_key = "menu" # Return to main menu
+
+    def _update_help_menu(self, dt):
+        """Updates Help menu logic."""
+        pass # No dynamic updates needed here
+
+    def _draw_help_menu(self):
+        """Draws the Help menu."""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 70)
+        title_text = title_font.render("Help & Controls", True, WHITE)
+        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 50)))
+
+        y_offset = 150
+        for line_surface in self.help_menu_lines:
+            self.screen.blit(line_surface, (50, y_offset))
+            y_offset += line_surface.get_height() + 5 # Add some line spacing
+
+        return_text = self.font.render("Press ESC or ENTER to return to Main Menu", True, LIGHT_GRAY)
+        self.screen.blit(return_text, return_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)))
+
+
     def _save_current_game(self):
         """Saves the state of the currently active game."""
-        if self.active_game_key != "menu":
+        if self.active_game_key in self.games: # Only save if a game is active, not a menu
             current_game = self.games[self.active_game_key]
             game_state = current_game.get_state()
             save_data = {
@@ -745,7 +886,7 @@ class GameConsole:
             # Optionally show a message to the user
             print(f"Saved {self.active_game_key} game state.")
         else:
-            print("Cannot save from the main menu. Please start a game first.")
+            print("Cannot save from the current screen. Please start a game first.")
 
     def _load_saved_game(self):
         """Loads a previously saved game."""
