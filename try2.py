@@ -641,8 +641,8 @@ class MazeGame(BaseGame):
     def __init__(self, console):
         super().__init__(console)
         self.cell_size = 40
-        self.maze_width = 15 # Cells
-        self.maze_height = 10 # Cells
+        self.size = "medium" # Default size
+        self._set_size_params() # Set initial maze dimensions
         self.maze_offset_x = (SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
         self.maze_offset_y = (SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
         self.maze = [] # Stores maze cells (0: path, 1: wall)
@@ -651,6 +651,27 @@ class MazeGame(BaseGame):
         self.game_over = False
         self.win = False
         self.reset()
+
+    def _set_size_params(self):
+        """Sets maze dimensions based on selected size."""
+        if self.size == "small":
+            self.maze_width = 10
+            self.maze_height = 8
+        elif self.size == "large":
+            self.maze_width = 20
+            self.maze_height = 15
+        else: # Medium
+            self.maze_width = 15
+            self.maze_height = 10
+        # Recalculate offsets based on new dimensions
+        self.maze_offset_x = (SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
+        self.maze_offset_y = (SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
+
+    def set_size(self, maze_size_level):
+        """Sets the maze size and updates parameters."""
+        self.size = maze_size_level
+        self._set_size_params()
+        self.reset() # Reset board with new size settings
 
     def reset(self):
         """Resets Maze game state and generates a new maze."""
@@ -665,7 +686,9 @@ class MazeGame(BaseGame):
 
 
     def _generate_maze(self):
-        """Generates a simple maze using a randomized Prim's algorithm."""
+        """Generates a simple maze using a randomized Prim's algorithm.
+        This algorithm inherently creates a solvable maze with a single path
+        between any two points within the maze."""
         # Initialize grid with all walls
         self.maze = [[1 for _ in range(self.maze_width)] for _ in range(self.maze_height)]
 
@@ -673,20 +696,20 @@ class MazeGame(BaseGame):
         start_x, start_y = random.randint(0, self.maze_width - 1), random.randint(0, self.maze_height - 1)
         self.maze[start_y][start_x] = 0
 
-        # List of walls to be processed
+        # List of walls to be processed (wall_coords, passage_coords)
         walls = []
         # Add walls of the starting cell to the list
         for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             nx, ny = start_x + dx, start_y + dy
             if 0 <= nx < self.maze_width and 0 <= ny < self.maze_height and self.maze[ny][nx] == 1:
-                walls.append(((nx, ny), (start_x, start_y))) # (wall_coords, passage_coords)
+                walls.append(((nx, ny), (start_x, start_y)))
 
         while walls:
             # Pick a random wall from the list
             wall_index = random.randrange(len(walls))
             (wx, wy), (px, py) = walls.pop(wall_index)
 
-            # Check if the wall is still a wall and the cell on the other side is unvisited
+            # Check if the cell on the other side of the wall is unvisited (still a wall)
             if 0 <= wx < self.maze_width and 0 <= wy < self.maze_height and self.maze[wy][wx] == 1:
                 # Count visited neighbors for the cell on the other side of the wall
                 visited_neighbors = 0
@@ -696,6 +719,7 @@ class MazeGame(BaseGame):
                         visited_neighbors += 1
 
                 # If the cell on the other side has only one visited neighbor (the current path)
+                # This ensures we don't create loops and maintain a single connected component
                 if visited_neighbors == 1:
                     self.maze[wy][wx] = 0 # Carve a path through the wall
                     # Add new walls of the newly carved cell
@@ -788,10 +812,13 @@ class MazeGame(BaseGame):
             "player_pos": self.player_pos,
             "end_pos": self.end_pos,
             "game_over": self.game_over,
-            "win": self.win
+            "win": self.win,
+            "size": self.size # Save maze size
         }
 
     def set_state(self, state):
+        self.size = state.get("size", "medium") # Load maze size first
+        self._set_size_params() # Apply loaded maze dimensions
         self.maze = state.get("maze", [])
         self.player_pos = state.get("player_pos", [0, 0])
         self.end_pos = state.get("end_pos", [self.maze_width - 1, self.maze_height - 1])
@@ -869,7 +896,8 @@ class GameConsole:
             ("Play Minesweeper", "minesweeper_difficulty_selection"), # Now leads to difficulty selection
             ("Set Minesweeper Difficulty", "minesweeper_difficulty_settings"), # For changing difficulty without starting
             ("Play Jump King", "jump_king"),
-            ("Play Maze Game", "maze"), # New Maze game option
+            ("Play Maze Game", "maze_size_selection"), # Now leads to size selection
+            ("Set Maze Size", "maze_size_settings"), # For changing size without starting
             ("Load Game", "load"),
             ("Help", "help"),
             ("Exit", "exit")
@@ -892,13 +920,21 @@ class GameConsole:
         ]
         self.selected_minesweeper_difficulty_index = 0
 
+        self.maze_size_options = [
+            ("Small (10x8)", "small"),
+            ("Medium (15x10)", "medium"),
+            ("Large (20x15)", "large"),
+            ("Back to Main Menu", "back")
+        ]
+        self.selected_maze_size_index = 0
+
 
         self.help_menu_content = {
             "Pong": "Controls: UP/DOWN arrow keys for paddle. ESC to menu, R to restart. Difficulty affects AI & ball speed.",
             "Minesweeper": "Controls: Left Click to reveal, Right Click to flag. ESC to menu, R to restart. Difficulty affects board size & mines.",
             "Jump King": "Controls: LEFT/RIGHT arrow keys to move. Hold SPACE to charge jump, release to jump. ESC to menu, R to restart.",
-            "Maze Game": "Controls: ARROW keys to move. Find the red circle. ESC to menu, R to restart.",
-            "Console": "Press 'S' in any game to save its state. Load from Main Menu. Use 'Set Difficulty' options to change difficulty without starting a new game."
+            "Maze Game": "Controls: ARROW keys to move. Find the red circle. ESC to menu, R to restart. Size affects maze dimensions.",
+            "Console": "Press 'S' in any game to save its state. Load from Main Menu. Use 'Set Difficulty/Size' options to change settings without starting a new game."
         }
         self.help_menu_lines = []
         self._format_help_menu_content()
@@ -947,6 +983,8 @@ class GameConsole:
                     self._handle_pong_difficulty_menu_event(event)
                 elif self.active_game_key == "minesweeper_difficulty_selection" or self.active_game_key == "minesweeper_difficulty_settings":
                     self._handle_minesweeper_difficulty_menu_event(event)
+                elif self.active_game_key == "maze_size_selection" or self.active_game_key == "maze_size_settings":
+                    self._handle_maze_size_menu_event(event)
                 elif self.active_game_key == "help":
                     self._handle_help_menu_event(event)
                 else:
@@ -962,6 +1000,9 @@ class GameConsole:
             elif self.active_game_key == "minesweeper_difficulty_selection" or self.active_game_key == "minesweeper_difficulty_settings":
                 self._update_minesweeper_difficulty_menu(dt)
                 self._draw_minesweeper_difficulty_menu(self.active_game_key == "minesweeper_difficulty_selection") # Pass flag for title
+            elif self.active_game_key == "maze_size_selection" or self.active_game_key == "maze_size_settings":
+                self._update_maze_size_menu(dt)
+                self._draw_maze_size_menu(self.active_game_key == "maze_size_selection")
             elif self.active_game_key == "help":
                 self._update_help_menu(dt)
                 self._draw_help_menu()
@@ -1026,8 +1067,12 @@ class GameConsole:
             self.selected_minesweeper_difficulty_index = 0
         elif selected_action == "jump_king":
             self.set_active_game("jump_king")
-        elif selected_action == "maze":
-            self.set_active_game("maze")
+        elif selected_action == "maze_size_selection":
+            self.active_game_key = "maze_size_selection"
+            self.selected_maze_size_index = 0
+        elif selected_action == "maze_size_settings":
+            self.active_game_key = "maze_size_settings"
+            self.selected_maze_size_index = 0
         elif selected_action == "load":
             self._load_saved_game()
         elif selected_action == "help":
@@ -1109,6 +1154,44 @@ class GameConsole:
         for i, (text, difficulty_level) in enumerate(self.minesweeper_difficulty_options):
             color = YELLOW if i == self.selected_minesweeper_difficulty_index else WHITE
             if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
+                color = ORANGE
+            menu_text = self.font.render(text, True, color)
+            self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
+
+    def _handle_maze_size_menu_event(self, event):
+        """Handles events for the Maze size menu."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                self.selected_maze_size_index = (self.selected_maze_size_index - 1) % len(self.maze_size_options)
+            elif event.key == pygame.K_DOWN:
+                self.selected_maze_size_index = (self.selected_maze_size_index + 1) % len(self.maze_size_options)
+            elif event.key == pygame.K_RETURN:
+                selected_size_action = self.maze_size_options[self.selected_maze_size_index][1]
+                if selected_size_action == "back":
+                    self.active_game_key = "menu"
+                else:
+                    self.games["maze"].set_size(selected_size_action)
+                    print(f"Maze size set to: {selected_size_action.capitalize()}")
+                    if self.active_game_key == "maze_size_selection": # If coming from "Play Maze Game"
+                        self.set_active_game("maze") # Start the game
+                    else: # If coming from "Set Maze Size"
+                        self.active_game_key = "menu" # Return to main menu
+
+    def _update_maze_size_menu(self, dt):
+        """Updates Maze size menu logic."""
+        pass
+
+    def _draw_maze_size_menu(self, is_selection_menu):
+        """Draws the Maze size menu."""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 70)
+        title_text_str = "Select Maze Size" if is_selection_menu else "Set Maze Size"
+        title_text = title_font.render(title_text_str, True, WHITE)
+        self.screen.blit(title_text, title_text.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+
+        for i, (text, size_level) in enumerate(self.maze_size_options):
+            color = YELLOW if i == self.selected_maze_size_index else WHITE
+            if size_level == self.games["maze"].size and size_level != "back":
                 color = ORANGE
             menu_text = self.font.render(text, True, color)
             self.screen.blit(menu_text, menu_text.get_rect(center=(SCREEN_WIDTH // 2, 250 + i * 60)))
