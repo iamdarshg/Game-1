@@ -441,11 +441,9 @@ class JumpKingGame(BaseGame):
     def __init__(self, console):
         super().__init__(console)
         self.player_size = 30
-        self.player_x = BASE_SCREEN_WIDTH // 2 - self.player_size // 2
-        self.player_y = BASE_SCREEN_HEIGHT - 100 - self.player_size # Start above bottom
         self.player_vel_y = 0
         self.gravity = 0.5
-        self.jump_power = -18
+        self.jump_power = -18 # Increased jump power for more height
         self.on_ground = False
         self.charging_jump = False
         self.jump_charge_time = 0
@@ -458,12 +456,18 @@ class JumpKingGame(BaseGame):
 
         self.platforms = []
         self.goal_platform = None
+        
+        # World dimensions for scrolling
+        self.world_height = BASE_SCREEN_HEIGHT * 3 # 3 screens tall
+        self.camera_y_offset = 0 # Current camera offset (world_y - camera_y_offset = screen_y)
+
         self.reset()
 
     def reset(self):
         """Resets Jump King game state and generates a new level."""
         self.player_x = BASE_SCREEN_WIDTH // 2 - self.player_size // 2
-        self.player_y = BASE_SCREEN_HEIGHT - 100 - self.player_size
+        # Start player near the bottom of the world
+        self.player_y = self.world_height - 100 - self.player_size 
         self.player_vel_y = 0
         self.on_ground = False
         self.charging_jump = False
@@ -472,29 +476,70 @@ class JumpKingGame(BaseGame):
         self.win = False
         self.coyote_time_counter = 0 # Reset coyote time on game reset
         self._generate_platforms()
+        # Set initial camera position to show the player at the bottom
+        self.camera_y_offset = max(0, self.player_y - BASE_SCREEN_HEIGHT // 2)
+
 
     def _generate_platforms(self):
         self.platforms = []
-        # Starting platform
-        self.platforms.append(pygame.Rect(BASE_SCREEN_WIDTH // 2 - 50, BASE_SCREEN_HEIGHT - 100, 100, 20))
+        
+        # Calculate max jump height to ensure platforms are reachable
+        # Corrected formula for maximum height reached given initial upward velocity (abs(jump_power))
+        # h = v0^2 / (2 * g)
+        max_jump_height = (self.jump_power ** 2) / (2 * self.gravity)
+        
+        # Define min/max gaps based on jump height
+        # Ensure min_vertical_gap is at least 1 to avoid empty range for random.randint
+        min_vertical_gap = max(1, int(max_jump_height * 0.4)) 
+        max_vertical_gap = int(max_jump_height * 0.8) 
 
-        # Generate a few random platforms
-        current_y = BASE_SCREEN_HEIGHT - 200
-        for _ in range(5): # 5 platforms
+        # Ensure max_vertical_gap is at least min_vertical_gap
+        if min_vertical_gap > max_vertical_gap:
+            max_vertical_gap = min_vertical_gap + 1 # Add a small buffer
+
+        # Starting platform at the bottom of the world
+        start_platform_y = self.world_height - 100
+        self.platforms.append(pygame.Rect(BASE_SCREEN_WIDTH // 2 - 50, start_platform_y, 100, 20))
+
+        # Generate platforms upwards
+        # Start generating from above the initial platform, leaving some initial jump space
+        current_world_y = start_platform_y - self.player_size - 20 # Small buffer above player on start platform
+        
+        # Target for the goal platform
+        goal_y_target = 50 
+
+        # Generate platforms until we are above the target goal Y
+        while current_world_y > goal_y_target + 100: # Ensure enough space for goal platform
             width = random.randint(60, 150)
             height = 20
             x = random.randint(50, BASE_SCREEN_WIDTH - width - 50)
-            y = current_y - random.randint(80, 150) # Platforms are above each other
-            self.platforms.append(pygame.Rect(x, y, width, height))
-            current_y = y
+            
+            # Calculate next platform's Y position
+            # This ensures platforms are placed at reachable distances
+            y_gap = random.randint(min_vertical_gap, max_vertical_gap)
+            next_platform_y = current_world_y - y_gap
+            
+            # Ensure the platform doesn't go too high too quickly, or below current_world_y
+            # Also ensure it doesn't go below the minimum Y for the goal
+            next_platform_y = max(goal_y_target + 50, next_platform_y) # Don't overlap with goal area
 
-        # Goal platform at the top
+            self.platforms.append(pygame.Rect(x, next_platform_y, width, height))
+            current_world_y = next_platform_y # Update current_world_y to the new platform's Y
+            
+            # Add some randomness to horizontal placement for variety
+            current_world_y -= random.randint(10, 30) # Small downward shift to ensure progression
+
+
+        # Goal platform at the very top
         goal_width = 80
         goal_height = 20
         goal_x = random.randint(50, BASE_SCREEN_WIDTH - goal_width - 50)
-        goal_y = 50 # Near the top
+        goal_y = 50 # Fixed near the top of the world
         self.goal_platform = pygame.Rect(goal_x, goal_y, goal_width, goal_height)
         self.platforms.append(self.goal_platform)
+
+        # Sort platforms by Y-coordinate for consistent drawing and collision checking (optional but good practice)
+        self.platforms.sort(key=lambda p: p.y)
 
 
     def handle_event(self, event):
@@ -515,7 +560,7 @@ class JumpKingGame(BaseGame):
                 self.charging_jump = False
                 # Apply jump power based on charge time
                 jump_strength = self.jump_power * (self.jump_charge_time / self.max_jump_charge)
-                self.player_vel_y = max(self.jump_power, jump_strength) # Cap at full jump power
+                self.player_vel_y = max(self.jump_power, jump_strength) # Cap at full jump power (negative for upward)
                 self.on_ground = False # Player is now in air (important for subsequent fall/coyote time)
 
     def update(self, dt):
@@ -537,7 +582,7 @@ class JumpKingGame(BaseGame):
         if keys[pygame.K_RIGHT]:
             self.player_x += 3
 
-        # Keep player within horizontal bounds
+        # Keep player within horizontal bounds of the screen
         self.player_x = max(0, min(self.player_x, BASE_SCREEN_WIDTH - self.player_size))
 
         player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
@@ -545,20 +590,23 @@ class JumpKingGame(BaseGame):
         # Check for actual ground collision
         was_on_ground_this_frame = False
         for platform in self.platforms:
+            # Create a rect for the platform for collision detection
+            platform_rect = platform # Platforms are already world coordinates
+            
             # Check for collision from top (player falling onto platform)
             # Add a small buffer (e.g., 2 pixels) to the collision check for robustness
-            if self.player_vel_y >= 0 and player_rect.colliderect(platform) and \
-               player_rect.bottom >= platform.top and player_rect.bottom <= platform.top + self.player_vel_y + 2:
-                self.player_y = platform.top - self.player_size # Snap to top
+            if self.player_vel_y >= 0 and player_rect.colliderect(platform_rect) and \
+               player_rect.bottom >= platform_rect.top and player_rect.bottom <= platform_rect.top + self.player_vel_y + 2:
+                self.player_y = platform_rect.top - self.player_size # Snap to top
                 self.player_vel_y = 0
                 was_on_ground_this_frame = True
-                if platform == self.goal_platform:
+                if platform_rect == self.goal_platform:
                     self.win = True
                     self.game_over = True
             # Handle hitting bottom of platform (player jumping into it)
-            elif self.player_vel_y < 0 and player_rect.colliderect(platform) and \
-                 player_rect.top <= platform.bottom and player_rect.top >= platform.bottom - abs(self.player_vel_y) - 2:
-                self.player_y = platform.bottom # Snap to bottom
+            elif self.player_vel_y < 0 and player_rect.colliderect(platform_rect) and \
+                 player_rect.top <= platform_rect.bottom and player_rect.top >= platform_rect.bottom - abs(self.player_vel_y) - 2:
+                self.player_y = platform_rect.bottom # Snap to bottom
                 self.player_vel_y = 0 # Stop upward movement
 
         # Update on_ground and coyote time counter
@@ -570,30 +618,48 @@ class JumpKingGame(BaseGame):
             if self.coyote_time_counter > 0:
                 self.coyote_time_counter -= 1 # Decrement coyote time if not on ground
 
-        # Check for falling off screen (Game Over)
-        if self.player_y > BASE_SCREEN_HEIGHT:
+        # Check for falling off screen (Game Over) - now checks against world height
+        if self.player_y > self.world_height:
             self.game_over = True
+
+        # Camera logic: Keep player roughly centered vertically, but clamp to world bounds
+        # Target camera_y_offset to keep player at 40% from the top of the screen
+        target_camera_y_offset = self.player_y - (BASE_SCREEN_HEIGHT * 0.4) 
+        
+        # Clamp camera_y_offset to world boundaries
+        # The camera's top (y=0) cannot go below 0 world coordinate
+        # The camera's bottom (y=BASE_SCREEN_HEIGHT) cannot go above world_height
+        max_camera_y_offset = self.world_height - BASE_SCREEN_HEIGHT
+        min_camera_y_offset = 0
+
+        self.camera_y_offset = max(min_camera_y_offset, min(max_camera_y_offset, target_camera_y_offset))
+
 
     def draw(self, screen):
         screen.fill(BLUE) # Sky background
 
-        # Draw platforms
+        # Draw platforms, adjusting for camera offset
         for platform in self.platforms:
             color = GREEN
             if platform == self.goal_platform:
                 color = YELLOW # Goal platform is yellow
-            pygame.draw.rect(screen, color, platform)
+            # Draw platform using its world coordinates minus the camera offset
+            pygame.draw.rect(screen, color, (platform.x, platform.y - self.camera_y_offset, platform.width, platform.height))
 
-        # Draw player
-        pygame.draw.rect(screen, RED, (self.player_x, self.player_y, self.player_size, self.player_size))
+        # Draw player, adjusting for camera offset
+        pygame.draw.rect(screen, RED, (self.player_x, self.player_y - self.camera_y_offset, self.player_size, self.player_size))
 
-        # Draw jump charge bar
+        # Draw jump charge bar, adjusting for camera offset
         if self.charging_jump:
             bar_width = 100
             bar_height = 10
             fill_width = (self.jump_charge_time / self.max_jump_charge) * bar_width
-            pygame.draw.rect(screen, GRAY, (self.player_x + self.player_size // 2 - bar_width // 2, self.player_y - 20, bar_width, bar_height), 2) # Outline
-            pygame.draw.rect(screen, GREEN, (self.player_x + self.player_size // 2 - bar_width // 2, self.player_y - 20, fill_width, bar_height)) # Fill
+            pygame.draw.rect(screen, GRAY, (self.player_x + self.player_size // 2 - bar_width // 2, 
+                                            self.player_y - self.camera_y_offset - 20, 
+                                            bar_width, bar_height), 2) # Outline
+            pygame.draw.rect(screen, GREEN, (self.player_x + self.player_size // 2 - bar_width // 2, 
+                                             self.player_y - self.camera_y_offset - 20, 
+                                             fill_width, bar_height)) # Fill
 
         if self.game_over:
             overlay = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -626,12 +692,14 @@ class JumpKingGame(BaseGame):
             "platforms": platforms_data,
             "goal_platform": goal_platform_data,
             "game_over": self.game_over,
-            "win": self.win
+            "win": self.win,
+            "camera_y_offset": self.camera_y_offset, # Save camera offset
+            "world_height": self.world_height # Save world height
         }
 
     def set_state(self, state):
         self.player_x = state.get("player_x", BASE_SCREEN_WIDTH // 2 - self.player_size // 2)
-        self.player_y = state.get("player_y", BASE_SCREEN_HEIGHT - 100 - self.player_size)
+        self.player_y = state.get("player_y", self.world_height - 100 - self.player_size) # Default to bottom of world
         self.player_vel_y = state.get("player_vel_y", 0)
         self.on_ground = state.get("on_ground", False)
         self.charging_jump = state.get("charging_jump", False)
@@ -639,6 +707,8 @@ class JumpKingGame(BaseGame):
         self.coyote_time_counter = state.get("coyote_time_counter", 0) # Load coyote time
         self.game_over = state.get("game_over", False)
         self.win = state.get("win", False)
+        self.camera_y_offset = state.get("camera_y_offset", 0) # Load camera offset
+        self.world_height = state.get("world_height", BASE_SCREEN_HEIGHT * 3) # Load world height
 
         # Reconstruct platforms from tuples
         platforms_data = state.get("platforms")
@@ -669,6 +739,7 @@ class MazeGame(BaseGame):
         self.cell_size = 40
         self.size = "medium" # Default size
         self._set_size_params() # Set initial maze dimensions
+        # Corrected: Use maze_width and maze_height directly
         self.maze_offset_x = (BASE_SCREEN_WIDTH - self.maze_width * self.cell_size) // 2
         self.maze_offset_y = (BASE_SCREEN_HEIGHT - self.maze_height * self.cell_size) // 2
         self.maze = [] # Stores maze cells (0: path, 1: wall)
@@ -753,6 +824,13 @@ class MazeGame(BaseGame):
                         nx, ny = wx + dx, wy + dy
                         if 0 <= nx < self.maze_width and 0 <= ny < self.maze_height and self.maze[ny][nx] == 1:
                             walls.append(((nx, ny), (wx, wy)))
+        # Ensure the maze is solvable by setting start and end points
+        if self.maze[0][1] == 1 and self.maze[1][0] == 1:
+            self.maze[0][1] = 0
+        if self.maze[self.maze_height - 1][self.maze_width - 2] == 1 and self.maze[self.maze_height - 2][self.maze_width - 1] == 1:
+            self.maze[self.maze_height - 1][self.maze_width - 2] = 0
+
+            
 
 
     def handle_event(self, event):
@@ -788,8 +866,8 @@ class MazeGame(BaseGame):
         screen.fill(BLACK)
 
         # Draw maze
-        for r in range(self.maze_height):
-            for c in range(self.maze_width):
+        for r in range(self.maze_height): # Corrected: Use maze_height
+            for c in range(self.maze_width): # Corrected: Use maze_width
                 x = self.maze_offset_x + c * self.cell_size
                 y = self.maze_offset_y + r * self.cell_size
                 cell_rect = pygame.Rect(x, y, self.cell_size, self.cell_size)
@@ -1217,7 +1295,8 @@ class GameConsole:
         self.display_surface = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT))
 
         self.clock = pygame.time.Clock()
-        self.base_font_size = 30 # Base font size for calculations, reduced from 50
+        self.base_font_size = 30 # Base font size for calculations
+        self.MAX_FONT_SIZE = 60 # Maximum font size to prevent over-scaling
         self.font = pygame.font.Font(None, self.base_font_size) # Initial font, will be scaled
 
         self.games = {
@@ -1282,10 +1361,9 @@ class GameConsole:
         self._format_help_menu_content()
 
     def _get_scaled_font_size(self, base_size):
-        """Calculates a scaled font size based on the current window height."""
-        # Scale factor based on current window height relative to base height
+        """Calculates a scaled font size based on the current window height, with an upper limit."""
         scale_factor = self.screen.get_height() / BASE_SCREEN_HEIGHT
-        return int(base_size * scale_factor)
+        return min(int(base_size * scale_factor), self.MAX_FONT_SIZE)
 
     def _scale_mouse_pos(self, pos):
         """Converts mouse coordinates from actual window size to base screen size."""
@@ -1298,25 +1376,32 @@ class GameConsole:
         """Formats help menu content into lines for display."""
         # Re-render help menu lines when font size might change
         self.help_menu_lines = []
+        # No title for help menu anymore, so the main font size is used for section titles
+        title_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+        
+        # Content font is smaller
+        content_font_size_ratio = 0.6 # Content font is 60% of base_font_size
+        content_font = pygame.font.Font(None, self._get_scaled_font_size(int(self.base_font_size * content_font_size_ratio))) 
+        
+        # Max width for text wrapping, scaled by current window width
+        # This should be based on BASE_SCREEN_WIDTH for consistency, then scaled by window aspect ratio
+        max_line_width_base = BASE_SCREEN_WIDTH - 100 # 50px padding on each side
+        
         for title, text in self.help_menu_content.items():
-            title_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
             self.help_menu_lines.append(title_font.render(title, True, YELLOW))
             
-            content_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size * 0.6)) # Smaller font for content
             words = text.split(' ')
             current_line = ""
-            # Max width for text wrapping, scaled by current window width
-            max_line_width = int((BASE_SCREEN_WIDTH - 100) * (self.screen.get_width() / BASE_SCREEN_WIDTH))
-            
             for word in words:
                 test_line = current_line + word + " "
-                if content_font.size(test_line)[0] < max_line_width:
+                # Check against the scaled width of the text using the content_font
+                if content_font.size(test_line)[0] < max_line_width_base:
                     current_line = test_line
                 else:
                     self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
                     current_line = word + " "
             self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
-            self.help_menu_lines.append(self.font.render("", True, WHITE)) # Blank line for spacing
+            self.help_menu_lines.append(content_font.render("", True, WHITE)) # Blank line for spacing
 
 
     def set_active_game(self, game_key):
@@ -1404,62 +1489,62 @@ class GameConsole:
     def _draw_menu(self):
         """Draws the main menu screen on display_surface."""
         self.display_surface.fill(BLACK)
-        title_font = pygame.font.Font(None, self._get_scaled_font_size(80))
-        title_text = title_font.render("Pygame Console", True, WHITE)
-        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
-        # self.display_surface.blit(title_text, title_rect)
-
+        
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         
         # Calculate ideal vertical spacing based on a fixed ratio
-        ideal_spacing = self._get_scaled_font_size(40) # This keeps the 'reduced aspect'
+        ideal_spacing = self._get_scaled_font_size(40) 
         
         # Calculate total height of menu items + spacing
-        # Start with a fixed top margin below the title
-        top_margin = 150 # Distance from top of screen to first menu item's center
+        # No title, so start from a fixed top padding
+        top_padding = self._get_scaled_font_size(80) # Padding from the top of the screen
+        min_bottom_clearance = self._get_scaled_font_size(30) # Minimum clearance for the save hint
         
-        # Calculate the total height all menu items *would* take with ideal spacing
-        total_menu_height_ideal = len(self.menu_options) * ideal_spacing
-        
-        # Calculate current available vertical space for the menu
-        # This takes into account the title and a minimum bottom clearance
-        min_bottom_clearance = self._get_scaled_font_size(80) # Adjust as needed
-        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+        # Available vertical space for the menu, excluding top padding and bottom clearance
+        available_menu_space = BASE_SCREEN_HEIGHT - top_padding - min_bottom_clearance
+
+        # Calculate total height of all menu items if they were stacked with their actual font height
+        total_font_height = sum(menu_font.size(text)[1] for text, _ in self.menu_options)
+
+        # Calculate the number of gaps between menu items
+        num_gaps = len(self.menu_options) - 1
+        num_gaps = max(0, num_gaps) # Ensure non-negative
+
+        # Calculate the total height required by menu items including their own height and desired spacing
+        total_required_height = total_font_height + (ideal_spacing * num_gaps)
 
         # Determine actual spacing. If ideal height fits, use ideal spacing.
         # Otherwise, compress spacing to fit.
-        if total_menu_height_ideal > available_menu_space:
+        if total_required_height > available_menu_space:
             # If menu is too tall, calculate new compressed spacing
-            # Distribute total available space (minus font height for each) over the number of gaps
-            total_font_height = len(self.menu_options) * menu_font.get_height()
-            num_gaps = len(self.menu_options) - 1
             if num_gaps > 0:
                 adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
-                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing) # Ensure a minimum spacing
-            else: # Only one item
+                adjusted_spacing = max(self._get_scaled_font_size(10), adjusted_spacing) # Ensure a minimum spacing
+            else: # Only one item, no spacing between items
                 adjusted_spacing = 0
             
+            current_spacing_offset = adjusted_spacing + menu_font.get_height()
             # Recalculate start_y to center the compressed menu block
             effective_menu_height = total_font_height + adjusted_spacing * num_gaps
-            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
-            
-            current_spacing = adjusted_spacing + menu_font.get_height()
+            start_y = top_padding + (available_menu_space - effective_menu_height) // 2
         else:
             # If ideal height fits, use ideal spacing and center the whole block
-            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
-            current_spacing = ideal_spacing
+            current_spacing_offset = ideal_spacing
+            start_y = top_padding + (available_menu_space - total_required_height) // 2
 
 
+        current_y_pos = start_y
         for i, (text, _) in enumerate(self.menu_options):
             color = YELLOW if i == self.selected_menu_index else WHITE
             menu_text = menu_font.render(text, True, color)
-            # Center vertically relative to calculated start_y and spacing
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, current_y_pos + menu_text.get_height() // 2)))
+            current_y_pos += current_spacing_offset
+
 
         save_hint_font = pygame.font.Font(None, self._get_scaled_font_size(30))
         save_hint_text = save_hint_font.render("Press 'S' to Save Current Game (if active)", True, LIGHT_GRAY)
         # Position save hint text at a fixed offset from the bottom of BASE_SCREEN_HEIGHT
-        self.display_surface.blit(save_hint_text, save_hint_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - self._get_scaled_font_size(30))))
+        self.display_surface.blit(save_hint_text, save_hint_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - self._get_scaled_font_size(20))))
 
 
     def _execute_menu_option(self):
@@ -1525,41 +1610,46 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Pong Difficulty" if is_selection_menu else "Set Pong Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 80)) # Adjusted for no main title
         self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         
         ideal_spacing = self._get_scaled_font_size(40)
-        total_menu_height_ideal = len(self.pong_difficulty_options) * ideal_spacing
-        min_bottom_clearance = self._get_scaled_font_size(80)
-        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+        
+        top_padding = title_rect.bottom + self._get_scaled_font_size(20) # Padding below title
+        min_bottom_clearance = self._get_scaled_font_size(30)
+        available_menu_space = BASE_SCREEN_HEIGHT - top_padding - min_bottom_clearance
 
-        if total_menu_height_ideal > available_menu_space:
-            total_font_height = len(self.pong_difficulty_options) * menu_font.get_height()
-            num_gaps = len(self.pong_difficulty_options) - 1
+        total_font_height = sum(menu_font.size(text)[1] for text, _ in self.pong_difficulty_options)
+        num_gaps = len(self.pong_difficulty_options) - 1
+        num_gaps = max(0, num_gaps)
+
+        total_required_height = total_font_height + (ideal_spacing * num_gaps)
+
+        if total_required_height > available_menu_space:
             if num_gaps > 0:
                 adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
-                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+                adjusted_spacing = max(self._get_scaled_font_size(10), adjusted_spacing)
             else:
                 adjusted_spacing = 0
             
+            current_spacing_offset = adjusted_spacing + menu_font.get_height()
             effective_menu_height = total_font_height + adjusted_spacing * num_gaps
-            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
-            current_spacing = adjusted_spacing + menu_font.get_height()
+            start_y = top_padding + (available_menu_space - effective_menu_height) // 2
         else:
-            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
-            current_spacing = ideal_spacing
+            current_spacing_offset = ideal_spacing
+            start_y = top_padding + (available_menu_space - total_required_height) // 2
 
-
+        current_y_pos = start_y
         for i, (text, difficulty_level) in enumerate(self.pong_difficulty_options):
             color = YELLOW if i == self.selected_pong_difficulty_index else WHITE
             # Highlight current difficulty if it matches
             if difficulty_level == self.games["pong"].difficulty and difficulty_level != "back":
                 color = ORANGE # Use a different color for the currently active setting
             menu_text = menu_font.render(text, True, color)
-            # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, current_y_pos + menu_text.get_height() // 2)))
+            current_y_pos += current_spacing_offset
 
     def _handle_minesweeper_difficulty_menu_event(self, event):
         """Handles events for the Minesweeper difficulty menu."""
@@ -1590,40 +1680,45 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Minesweeper Difficulty" if is_selection_menu else "Set Minesweeper Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 80)) # Adjusted for no main title
         self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         
         ideal_spacing = self._get_scaled_font_size(40)
-        total_menu_height_ideal = len(self.minesweeper_difficulty_options) * ideal_spacing
-        min_bottom_clearance = self._get_scaled_font_size(80)
-        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+        
+        top_padding = title_rect.bottom + self._get_scaled_font_size(20)
+        min_bottom_clearance = self._get_scaled_font_size(30)
+        available_menu_space = BASE_SCREEN_HEIGHT - top_padding - min_bottom_clearance
 
-        if total_menu_height_ideal > available_menu_space:
-            total_font_height = len(self.minesweeper_difficulty_options) * menu_font.get_height()
-            num_gaps = len(self.minesweeper_difficulty_options) - 1
+        total_font_height = sum(menu_font.size(text)[1] for text, _ in self.minesweeper_difficulty_options)
+        num_gaps = len(self.minesweeper_difficulty_options) - 1
+        num_gaps = max(0, num_gaps)
+
+        total_required_height = total_font_height + (ideal_spacing * num_gaps)
+
+        if total_required_height > available_menu_space:
             if num_gaps > 0:
                 adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
-                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+                adjusted_spacing = max(self._get_scaled_font_size(10), adjusted_spacing)
             else:
                 adjusted_spacing = 0
             
+            current_spacing_offset = adjusted_spacing + menu_font.get_height()
             effective_menu_height = total_font_height + adjusted_spacing * num_gaps
-            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
-            current_spacing = adjusted_spacing + menu_font.get_height()
+            start_y = top_padding + (available_menu_space - effective_menu_height) // 2
         else:
-            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
-            current_spacing = ideal_spacing
+            current_spacing_offset = ideal_spacing
+            start_y = top_padding + (available_menu_space - total_required_height) // 2
 
-
+        current_y_pos = start_y
         for i, (text, difficulty_level) in enumerate(self.minesweeper_difficulty_options):
             color = YELLOW if i == self.selected_minesweeper_difficulty_index else WHITE
             if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
-            # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, current_y_pos + menu_text.get_height() // 2)))
+            current_y_pos += current_spacing_offset
 
     def _handle_maze_size_menu_event(self, event):
         """Handles events for the Maze size menu."""
@@ -1654,40 +1749,45 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Maze Size" if is_selection_menu else "Set Maze Size"
         title_text = title_font.render(title_text_str, True, WHITE)
-        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 80)) # Adjusted for no main title
         self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
 
         ideal_spacing = self._get_scaled_font_size(40)
-        total_menu_height_ideal = len(self.maze_size_options) * ideal_spacing
-        min_bottom_clearance = self._get_scaled_font_size(80)
-        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+        
+        top_padding = title_rect.bottom + self._get_scaled_font_size(20)
+        min_bottom_clearance = self._get_scaled_font_size(30)
+        available_menu_space = BASE_SCREEN_HEIGHT - top_padding - min_bottom_clearance
 
-        if total_menu_height_ideal > available_menu_space:
-            total_font_height = len(self.maze_size_options) * menu_font.get_height()
-            num_gaps = len(self.maze_size_options) - 1
+        total_font_height = sum(menu_font.size(text)[1] for text, _ in self.maze_size_options)
+        num_gaps = len(self.maze_size_options) - 1
+        num_gaps = max(0, num_gaps)
+
+        total_required_height = total_font_height + (ideal_spacing * num_gaps)
+
+        if total_required_height > available_menu_space:
             if num_gaps > 0:
                 adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
-                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+                adjusted_spacing = max(self._get_scaled_font_size(10), adjusted_spacing)
             else:
                 adjusted_spacing = 0
             
+            current_spacing_offset = adjusted_spacing + menu_font.get_height()
             effective_menu_height = total_font_height + adjusted_spacing * num_gaps
-            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
-            current_spacing = adjusted_spacing + menu_font.get_height()
+            start_y = top_padding + (available_menu_space - effective_menu_height) // 2
         else:
-            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
-            current_spacing = ideal_spacing
+            current_spacing_offset = ideal_spacing
+            start_y = top_padding + (available_menu_space - total_required_height) // 2
 
-
+        current_y_pos = start_y
         for i, (text, size_level) in enumerate(self.maze_size_options):
             color = YELLOW if i == self.selected_maze_size_index else WHITE
             if size_level == self.games["maze"].size and size_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
-            # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, current_y_pos + menu_text.get_height() // 2)))
+            current_y_pos += current_spacing_offset
 
 
     def _handle_help_menu_event(self, event):
@@ -1703,11 +1803,12 @@ class GameConsole:
     def _draw_help_menu(self):
         """Draws the Help menu on display_surface."""
         self.display_surface.fill(BLACK)
-        title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
-        title_text = title_font.render("Help & Controls", True, WHITE)
-        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 50)))
+        # No main title for help menu anymore
+        # title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
+        # title_text = title_font.render("Help & Controls", True, WHITE)
+        # self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 50)))
 
-        y_offset = 150
+        y_offset = self._get_scaled_font_size(50) # Start from a reasonable top padding
         # Use the pre-formatted lines from _format_help_menu_content
         for line_surface in self.help_menu_lines:
             self.display_surface.blit(line_surface, (50, y_offset))
@@ -1715,7 +1816,7 @@ class GameConsole:
 
         return_text_font = pygame.font.Font(None, self._get_scaled_font_size(40))
         return_text = return_text_font.render("Press ESC or ENTER to return to Main Menu", True, LIGHT_GRAY)
-        self.display_surface.blit(return_text, return_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - 50)))
+        self.display_surface.blit(return_text, return_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - self._get_scaled_font_size(20))))
 
 
     def _save_current_game(self):
