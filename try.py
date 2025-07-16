@@ -445,7 +445,7 @@ class JumpKingGame(BaseGame):
         self.player_y = BASE_SCREEN_HEIGHT - 100 - self.player_size # Start above bottom
         self.player_vel_y = 0
         self.gravity = 0.5
-        self.jump_power = -12
+        self.jump_power = -18
         self.on_ground = False
         self.charging_jump = False
         self.jump_charge_time = 0
@@ -1407,7 +1407,7 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(80))
         title_text = title_font.render("Pygame Console", True, WHITE)
         title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
-        self.display_surface.blit(title_text, title_rect)
+        # self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
         
