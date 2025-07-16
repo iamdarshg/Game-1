@@ -7,8 +7,8 @@ import random
 # --- Constants ---
 # These represent the internal rendering resolution, not the actual window size.
 # All game logic and drawing will be done relative to these dimensions.
-BASE_SCREEN_WIDTH = 800
-BASE_SCREEN_HEIGHT = 600
+BASE_SCREEN_WIDTH = 1280 # Changed for 16:9 aspect ratio
+BASE_SCREEN_HEIGHT = 720 # Changed for 16:9 aspect ratio
 FPS = 60
 GAME_SAVE_FILE = "game_console_save.pkl"
 
@@ -1217,7 +1217,7 @@ class GameConsole:
         self.display_surface = pygame.Surface((BASE_SCREEN_WIDTH, BASE_SCREEN_HEIGHT))
 
         self.clock = pygame.time.Clock()
-        self.base_font_size = 50 # Base font size for calculations
+        self.base_font_size = 30 # Base font size for calculations, reduced from 50
         self.font = pygame.font.Font(None, self.base_font_size) # Initial font, will be scaled
 
         self.games = {
@@ -1316,7 +1316,7 @@ class GameConsole:
                     self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
                     current_line = word + " "
             self.help_menu_lines.append(content_font.render(current_line, True, WHITE))
-            self.help_menu_lines.append(content_font.render("", True, WHITE)) # Blank line for spacing
+            self.help_menu_lines.append(self.font.render("", True, WHITE)) # Blank line for spacing
 
 
     def set_active_game(self, game_key):
@@ -1412,7 +1412,8 @@ class GameConsole:
         for i, (text, _) in enumerate(self.menu_options):
             color = YELLOW if i == self.selected_menu_index else WHITE
             menu_text = menu_font.render(text, True, color)
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
+            # Adjusted vertical spacing and starting position for closer grouping
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
 
         save_hint_font = pygame.font.Font(None, self._get_scaled_font_size(30))
         save_hint_text = save_hint_font.render("Press 'S' to Save Current Game (if active)", True, LIGHT_GRAY)
@@ -1491,7 +1492,8 @@ class GameConsole:
             if difficulty_level == self.games["pong"].difficulty and difficulty_level != "back":
                 color = ORANGE # Use a different color for the currently active setting
             menu_text = menu_font.render(text, True, color)
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
+            # Adjusted vertical spacing and starting position for closer grouping
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
 
     def _handle_minesweeper_difficulty_menu_event(self, event):
         """Handles events for the Minesweeper difficulty menu."""
@@ -1530,7 +1532,8 @@ class GameConsole:
             if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
+            # Adjusted vertical spacing and starting position for closer grouping
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
 
     def _handle_maze_size_menu_event(self, event):
         """Handles events for the Maze size menu."""
@@ -1569,7 +1572,8 @@ class GameConsole:
             if size_level == self.games["maze"].size and size_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 250 + i * self._get_scaled_font_size(60))))
+            # Adjusted vertical spacing and starting position for closer grouping
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
 
 
     def _handle_help_menu_event(self, event):
