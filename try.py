@@ -1406,18 +1406,60 @@ class GameConsole:
         self.display_surface.fill(BLACK)
         title_font = pygame.font.Font(None, self._get_scaled_font_size(80))
         title_text = title_font.render("Pygame Console", True, WHITE)
-        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+        
+        # Calculate ideal vertical spacing based on a fixed ratio
+        ideal_spacing = self._get_scaled_font_size(40) # This keeps the 'reduced aspect'
+        
+        # Calculate total height of menu items + spacing
+        # Start with a fixed top margin below the title
+        top_margin = 150 # Distance from top of screen to first menu item's center
+        
+        # Calculate the total height all menu items *would* take with ideal spacing
+        total_menu_height_ideal = len(self.menu_options) * ideal_spacing
+        
+        # Calculate current available vertical space for the menu
+        # This takes into account the title and a minimum bottom clearance
+        min_bottom_clearance = self._get_scaled_font_size(80) # Adjust as needed
+        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+
+        # Determine actual spacing. If ideal height fits, use ideal spacing.
+        # Otherwise, compress spacing to fit.
+        if total_menu_height_ideal > available_menu_space:
+            # If menu is too tall, calculate new compressed spacing
+            # Distribute total available space (minus font height for each) over the number of gaps
+            total_font_height = len(self.menu_options) * menu_font.get_height()
+            num_gaps = len(self.menu_options) - 1
+            if num_gaps > 0:
+                adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
+                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing) # Ensure a minimum spacing
+            else: # Only one item
+                adjusted_spacing = 0
+            
+            # Recalculate start_y to center the compressed menu block
+            effective_menu_height = total_font_height + adjusted_spacing * num_gaps
+            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
+            
+            current_spacing = adjusted_spacing + menu_font.get_height()
+        else:
+            # If ideal height fits, use ideal spacing and center the whole block
+            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
+            current_spacing = ideal_spacing
+
+
         for i, (text, _) in enumerate(self.menu_options):
             color = YELLOW if i == self.selected_menu_index else WHITE
             menu_text = menu_font.render(text, True, color)
-            # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
+            # Center vertically relative to calculated start_y and spacing
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
 
         save_hint_font = pygame.font.Font(None, self._get_scaled_font_size(30))
         save_hint_text = save_hint_font.render("Press 'S' to Save Current Game (if active)", True, LIGHT_GRAY)
-        self.display_surface.blit(save_hint_text, save_hint_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - 50)))
+        # Position save hint text at a fixed offset from the bottom of BASE_SCREEN_HEIGHT
+        self.display_surface.blit(save_hint_text, save_hint_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, BASE_SCREEN_HEIGHT - self._get_scaled_font_size(30))))
 
 
     def _execute_menu_option(self):
@@ -1483,9 +1525,33 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Pong Difficulty" if is_selection_menu else "Set Pong Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+        
+        ideal_spacing = self._get_scaled_font_size(40)
+        total_menu_height_ideal = len(self.pong_difficulty_options) * ideal_spacing
+        min_bottom_clearance = self._get_scaled_font_size(80)
+        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+
+        if total_menu_height_ideal > available_menu_space:
+            total_font_height = len(self.pong_difficulty_options) * menu_font.get_height()
+            num_gaps = len(self.pong_difficulty_options) - 1
+            if num_gaps > 0:
+                adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
+                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+            else:
+                adjusted_spacing = 0
+            
+            effective_menu_height = total_font_height + adjusted_spacing * num_gaps
+            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
+            current_spacing = adjusted_spacing + menu_font.get_height()
+        else:
+            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
+            current_spacing = ideal_spacing
+
+
         for i, (text, difficulty_level) in enumerate(self.pong_difficulty_options):
             color = YELLOW if i == self.selected_pong_difficulty_index else WHITE
             # Highlight current difficulty if it matches
@@ -1493,7 +1559,7 @@ class GameConsole:
                 color = ORANGE # Use a different color for the currently active setting
             menu_text = menu_font.render(text, True, color)
             # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
 
     def _handle_minesweeper_difficulty_menu_event(self, event):
         """Handles events for the Minesweeper difficulty menu."""
@@ -1524,16 +1590,40 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Minesweeper Difficulty" if is_selection_menu else "Set Minesweeper Difficulty"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+        
+        ideal_spacing = self._get_scaled_font_size(40)
+        total_menu_height_ideal = len(self.minesweeper_difficulty_options) * ideal_spacing
+        min_bottom_clearance = self._get_scaled_font_size(80)
+        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+
+        if total_menu_height_ideal > available_menu_space:
+            total_font_height = len(self.minesweeper_difficulty_options) * menu_font.get_height()
+            num_gaps = len(self.minesweeper_difficulty_options) - 1
+            if num_gaps > 0:
+                adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
+                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+            else:
+                adjusted_spacing = 0
+            
+            effective_menu_height = total_font_height + adjusted_spacing * num_gaps
+            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
+            current_spacing = adjusted_spacing + menu_font.get_height()
+        else:
+            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
+            current_spacing = ideal_spacing
+
+
         for i, (text, difficulty_level) in enumerate(self.minesweeper_difficulty_options):
             color = YELLOW if i == self.selected_minesweeper_difficulty_index else WHITE
             if difficulty_level == self.games["minesweeper"].difficulty and difficulty_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
             # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
 
     def _handle_maze_size_menu_event(self, event):
         """Handles events for the Maze size menu."""
@@ -1564,16 +1654,40 @@ class GameConsole:
         title_font = pygame.font.Font(None, self._get_scaled_font_size(70))
         title_text_str = "Select Maze Size" if is_selection_menu else "Set Maze Size"
         title_text = title_font.render(title_text_str, True, WHITE)
-        self.display_surface.blit(title_text, title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100)))
+        title_rect = title_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 100))
+        self.display_surface.blit(title_text, title_rect)
 
         menu_font = pygame.font.Font(None, self._get_scaled_font_size(self.base_font_size))
+
+        ideal_spacing = self._get_scaled_font_size(40)
+        total_menu_height_ideal = len(self.maze_size_options) * ideal_spacing
+        min_bottom_clearance = self._get_scaled_font_size(80)
+        available_menu_space = BASE_SCREEN_HEIGHT - title_rect.bottom - min_bottom_clearance
+
+        if total_menu_height_ideal > available_menu_space:
+            total_font_height = len(self.maze_size_options) * menu_font.get_height()
+            num_gaps = len(self.maze_size_options) - 1
+            if num_gaps > 0:
+                adjusted_spacing = (available_menu_space - total_font_height) // num_gaps
+                adjusted_spacing = max(self._get_scaled_font_size(25), adjusted_spacing)
+            else:
+                adjusted_spacing = 0
+            
+            effective_menu_height = total_font_height + adjusted_spacing * num_gaps
+            start_y = title_rect.bottom + (available_menu_space - effective_menu_height) // 2 + menu_font.get_height() // 2
+            current_spacing = adjusted_spacing + menu_font.get_height()
+        else:
+            start_y = title_rect.bottom + (available_menu_space - total_menu_height_ideal) // 2 + menu_font.get_height() // 2
+            current_spacing = ideal_spacing
+
+
         for i, (text, size_level) in enumerate(self.maze_size_options):
             color = YELLOW if i == self.selected_maze_size_index else WHITE
             if size_level == self.games["maze"].size and size_level != "back":
                 color = ORANGE
             menu_text = menu_font.render(text, True, color)
             # Adjusted vertical spacing and starting position for closer grouping
-            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, 220 + i * self._get_scaled_font_size(40))))
+            self.display_surface.blit(menu_text, menu_text.get_rect(center=(BASE_SCREEN_WIDTH // 2, start_y + i * current_spacing)))
 
 
     def _handle_help_menu_event(self, event):
